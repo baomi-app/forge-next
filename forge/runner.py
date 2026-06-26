@@ -21,7 +21,7 @@ Guidelines:
 """
 
 class AgentRunner:
-    """The central orchestrator that runs the core Agent Loop."""
+    """The central orchestrator that runs the core Agent Loop with Checkpointing support."""
 
     def __init__(
         self,
@@ -35,30 +35,89 @@ class AgentRunner:
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
 
-    def run(self, task: str, max_iterations: int = 10) -> ExecutionTrace:
-        """Executes the main agent loop for a given task.
+    def save_checkpoint(self, filepath: str, current_iteration: int, context: Context, trace: ExecutionTrace):
+        """Serialize current run memory to disk."""
+        data = {
+            "task": trace.task,
+            "current_iteration": current_iteration,
+            "system_prompt": self.system_prompt,
+            "messages": context.messages,
+            "test_command": self.verifier.test_command,
+            "trace_steps": [step.to_dict() for step in trace.steps]
+        }
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            print(f"[Checkpoint] Successfully saved session state to {filepath}")
+        except Exception as e:
+            print(f"[Warning] Failed to save checkpoint to {filepath}: {str(e)}")
+
+    def load_checkpoint(self, filepath: str) -> Dict[str, Any]:
+        """Deserialize checkpoint state from disk."""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        print(f"[Checkpoint] Successfully loaded session state from {filepath}")
+        return data
+
+    def run(
+        self,
+        task: str,
+        max_iterations: int = 10,
+        resume_from: Optional[str] = None,
+        checkpoint_path: str = "checkpoint.json"
+    ) -> ExecutionTrace:
+        """Executes the main agent loop for a given task, supporting crash recovery from checkpoint.
 
         Args:
             task: The user query/task description.
-            max_iterations: Maximum loop iterations (turns) to avoid infinite loops.
+            max_iterations: Maximum loop iterations (turns).
+            resume_from: Optional path to a checkpoint JSON file to resume from.
+            checkpoint_path: Filename to save iteration checkpoints to.
         """
         # Save original working directory to restore later
         original_cwd = os.getcwd()
 
-        # 1. Initialize Context & Trace
+        # Determine starting index and reconstruct state if resuming
+        start_iteration = 0
         context = Context(system_prompt=self.system_prompt)
-        context.add_user(task)
-        trace = ExecutionTrace(task)
+        trace = None
 
-        print(f"\n[Runner] Starting Agent Loop for task: '{task}'")
+        # If resume_from is requested, we change CWD to the workspace to find the file
+        try:
+            os.chdir(self.workspace_dir)
+
+            if resume_from and os.path.exists(resume_from):
+                data = self.load_checkpoint(resume_from)
+                task = data["task"]
+                start_iteration = data["current_iteration"]
+
+                # Restore messages history
+                context.messages = data["messages"]
+
+                # Reconstruct execution trace
+                trace = ExecutionTrace(task)
+                for step_data in data["trace_steps"]:
+                    trace.add_step(StepTrace.from_dict(step_data))
+
+                print(f"[Runner] Resuming agent loop from Iteration {start_iteration + 1}...")
+        except Exception as e:
+            print(f"[Warning] Failed to load resume file. Starting fresh: {str(e)}")
+            os.chdir(original_cwd) # Fallback CWD reset
+
+        # If starting fresh
+        if trace is None:
+            context.add_user(task)
+            trace = ExecutionTrace(task)
+            print(f"\n[Runner] Starting fresh Agent Loop for task: '{task}'")
+
         print(f"[Runner] Max iterations: {max_iterations}")
         print(f"[Runner] Workspace isolated to: {self.workspace_dir}")
 
         try:
-            # Change directory to the sandboxed workspace
+            # Always ensure cwd is switched to workspace
             os.chdir(self.workspace_dir)
 
-            for iteration in range(1, max_iterations + 1):
+            for iteration in range(start_iteration + 1, max_iterations + 1):
                 print(f"\n[Runner] === Iteration {iteration} ===")
 
                 step = StepTrace(step_idx=iteration)
@@ -98,6 +157,11 @@ class AgentRunner:
                         trace.add_step(step)
                         print("[Runner] Verifier PASSED! Task complete.")
                         trace.finish(content or "No final response provided.")
+
+                        # Clean up checkpoint on final success
+                        if os.path.exists(checkpoint_path):
+                            os.remove(checkpoint_path)
+                            print(f"[Checkpoint] Cleaned up temporary checkpoint file: {checkpoint_path}")
                         break
                     else:
                         print(f"[Runner] Verifier BLOCKED termination. Report:\n{report}")
@@ -113,6 +177,9 @@ class AgentRunner:
                         })
                         step.stop_timer()
                         trace.add_step(step)
+
+                        # Save checkpoint even on blocked verification
+                        self.save_checkpoint(checkpoint_path, iteration, context, trace)
                         continue
 
                 # If tool calls are requested, we must add the assistant response to the conversation history.
@@ -151,6 +218,9 @@ class AgentRunner:
 
                 step.stop_timer()
                 trace.add_step(step)
+
+                # Save checkpoint at the end of each successful iteration
+                self.save_checkpoint(checkpoint_path, iteration, context, trace)
 
             else:
                 # Loop exhausted without model stopping voluntarily

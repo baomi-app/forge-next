@@ -31,6 +31,18 @@ class StepTrace:
             "tool_results": self.tool_results
         }
 
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> 'StepTrace':
+        """Reconstruct a StepTrace object from a dictionary."""
+        step = StepTrace(step_idx=data["step_index"])
+        step.timestamp = data["timestamp"]
+        step.duration = data["duration_seconds"]
+        step.input_messages = data["input_messages"]
+        step.model_text_response = data["model_text_response"]
+        step.tool_calls = data["tool_calls"]
+        step.tool_results = data["tool_results"]
+        return step
+
 
 class ExecutionTrace:
     """Manages the full execution trace of an agent's run."""

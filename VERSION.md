@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.4.0-checkpoint (2026-06-26)
+
+In this version, we introduced **Checkpointing and Session Resuming**. This allows the Coding Agent to preserve its state (messages history, iterations count, and trace steps) to disk, allowing it to recover and resume from crashes or interruptions.
+
+### Key Changes
+- **Serialization Methods (`forge/runner.py`)**: Added `save_checkpoint` and `load_checkpoint` to dump and load state dictionary into a JSON file after every iteration.
+- **Trace Reconstruction (`forge/trace.py`)**: Added `StepTrace.from_dict` to easily reconstruct the previous step logs during resume.
+- **Resume Capability (`forge/runner.py`)**: Enhanced `AgentRunner.run` to accept a `resume_from` path, restoring context memory and starting the iteration loop directly from the exact step of interruption.
+- **Simulation Demo (`examples/demo_checkpoint.py`)**: Added a 2-stage demo demonstrating the agent crashing mid-run, preserving state, and resuming seamlessly.
+- **CLI Upgrades (`examples/run_agent.py`)**: Added a `--resume` option to CLI.
+
 ## v0.3.0-suite (2026-06-26)
 
 In this version, we implemented a **Task Suite (Benchmark Platform)** to programmatically evaluate Agent performance in isolated workspaces. We also introduced a CWD-switching sandboxing mechanism in the runner.

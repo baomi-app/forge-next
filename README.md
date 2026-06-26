@@ -35,6 +35,7 @@ Trace & Evaluation (Execution Logging)
 - **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
+- **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 
 ## Installation
 
@@ -69,10 +70,21 @@ The task suite runs multiple offline coding tasks and prints a benchmark summary
 python examples/run_suite.py --mock
 ```
 
+### Run Checkpoint Demo
+The checkpoint demo simulates an interrupted run, saves state, and resumes from the generated checkpoint:
+```bash
+python examples/demo_checkpoint.py
+```
+
 ### Run Real Agent
 To run on a real task with a real OpenAI/Gemini compatible API:
 ```bash
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1" # Or any proxy/alternative endpoint
 python examples/run_agent.py "Your prompt here" --test-command "python -m unittest"
+```
+
+To resume a saved run:
+```bash
+python examples/run_agent.py --resume checkpoint.json --trace-file trace.json
 ```
