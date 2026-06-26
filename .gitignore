@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+# Traces or temporary run outputs
+*.json
+.vscode/
