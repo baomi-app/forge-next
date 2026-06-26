@@ -1,3 +1,4 @@
+import os
 import json
 import copy
 from typing import Dict, Any, Optional
@@ -5,6 +6,7 @@ from forge.context import Context
 from forge.model import BaseModel
 from forge.tools import registry
 from forge.trace import ExecutionTrace, StepTrace
+from forge.verifier import Verifier
 
 DEFAULT_SYSTEM_PROMPT = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
 You have access to a set of core coding tools: list_files, search_code, read_file, apply_patch, edit_file_block, run_command, and git_diff.
@@ -21,9 +23,17 @@ Guidelines:
 class AgentRunner:
     """The central orchestrator that runs the core Agent Loop."""
     
-    def __init__(self, model: BaseModel, system_prompt: Optional[str] = None):
+    def __init__(
+        self, 
+        model: BaseModel, 
+        system_prompt: Optional[str] = None,
+        workspace_dir: str = ".",
+        test_command: Optional[str] = None
+    ):
         self.model = model
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        self.workspace_dir = os.path.abspath(workspace_dir)
+        self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
 
     def run(self, task: str, max_iterations: int = 10) -> ExecutionTrace:
         """Executes the main agent loop for a given task.
@@ -74,12 +84,29 @@ class AgentRunner:
             
             # 4. Handle tool execution / continuation decision
             if not tool_calls:
-                # If the model did not ask for any tool calls, it has finished or gave final answer
-                step.stop_timer()
-                trace.add_step(step)
-                print("[Runner] Model decided to STOP. Task complete.")
-                trace.finish(content or "No final response provided.")
-                break
+                # When the model attempts to finish, execute automated verification checks
+                is_passed, report = self.verifier.verify()
+                if is_passed:
+                    step.stop_timer()
+                    trace.add_step(step)
+                    print("[Runner] Verifier PASSED! Task complete.")
+                    trace.finish(content or "No final response provided.")
+                    break
+                else:
+                    print(f"[Runner] Verifier BLOCKED termination. Report:\n{report}")
+                    # Feed verification error back to assistant and user
+                    context.add_assistant(content, None)
+                    context.add_user(report)
+                    
+                    # Record verifier failure as a pseudo-tool result for tracing
+                    step.tool_results.append({
+                        "tool_call_id": "verifier_check",
+                        "name": "auto_verifier",
+                        "content": report
+                    })
+                    step.stop_timer()
+                    trace.add_step(step)
+                    continue
                 
             # If tool calls are requested, we must add the assistant response to the conversation history.
             # Tool-calling chat APIs require matching tool results to their respective assistant tool calls.

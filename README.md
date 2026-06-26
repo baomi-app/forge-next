@@ -31,6 +31,8 @@ Trace & Evaluation (Execution Logging)
   - `git_diff`: Inspect modifications.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
+- **Verifier Gatekeeper**: Automatically checks Python syntax and optional test commands before allowing the agent to finish.
+- **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
 
 ## Installation
 
@@ -53,10 +55,16 @@ To see the full loop and tool execution in action (using a simulated coding scen
 python examples/demo_mock.py
 ```
 
+### Run Verifier Demo
+The verifier demo shows the agent being blocked by a syntax error, receiving structured feedback, and correcting the file before finishing:
+```bash
+python examples/demo_verifier.py
+```
+
 ### Run Real Agent
 To run on a real task with a real OpenAI/Gemini compatible API:
 ```bash
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1" # Or any proxy/alternative endpoint
-python examples/run_agent.py "Your prompt here"
+python examples/run_agent.py "Your prompt here" --test-command "python -m unittest"
 ```

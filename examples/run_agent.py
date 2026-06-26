@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--model", type=str, default="gpt-4o", help="Model name to use (default: gpt-4o).")
     parser.add_argument("--max-iterations", type=int, default=10, help="Max loops (default: 10).")
     parser.add_argument("--trace-file", type=str, default="trace.json", help="Path to save the execution trace JSON (default: trace.json).")
+    parser.add_argument("--test-command", type=str, default=None, help="Command to run the project's test suite for verification.")
     args = parser.parse_args()
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -33,7 +34,7 @@ def main():
         print(f"Using Custom API Endpoint: {base_url}")
         
     model = OpenAIModel(model_name=args.model, api_key=api_key, base_url=base_url)
-    runner = AgentRunner(model=model)
+    runner = AgentRunner(model=model, test_command=args.test_command)
 
     try:
         trace = runner.run(args.task, max_iterations=args.max_iterations)
