@@ -33,6 +33,8 @@ Trace & Evaluation (Execution Logging)
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Verifier Gatekeeper**: Automatically checks Python syntax and optional test commands before allowing the agent to finish.
 - **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
+- **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
+- **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
 
 ## Installation
 
@@ -59,6 +61,12 @@ python examples/demo_mock.py
 The verifier demo shows the agent being blocked by a syntax error, receiving structured feedback, and correcting the file before finishing:
 ```bash
 python examples/demo_verifier.py
+```
+
+### Run Task Suite
+The task suite runs multiple offline coding tasks and prints a benchmark summary:
+```bash
+python examples/run_suite.py --mock
 ```
 
 ### Run Real Agent

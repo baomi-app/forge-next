@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.3.0-suite (2026-06-26)
+
+In this version, we implemented a **Task Suite (Benchmark Platform)** to programmatically evaluate Agent performance in isolated workspaces. We also introduced a CWD-switching sandboxing mechanism in the runner.
+
+### Key Changes
+- **Task Suite Module (`forge/suite.py`)**: Defines `CodingTask` and `TaskSuite` with 2 physical coding benchmarks (Math division bug and String reverse words implementation).
+- **CWD Sandboxing (`forge/runner.py`)**: Intercepts Agent execution and switches process working directory using `os.chdir(workspace_dir)` to isolate tool file read/write paths.
+- **Suite Benchmark CLI (`examples/run_suite.py`)**: Executes tasks in parallel temp folders under `temp_tasks/`, auto-verifies outputs, and prints a formatted summary table.
+- **Suite Mock Model**: Multi-task mock model that handles state resets and adapts logic to solve multiple suite tasks.
+
 ## v0.2.0-verifier (2026-06-26)
 
 In this version, we introduced an automated **Verifier** gatekeeper to automatically check python syntax and run test suites when the model attempts to declare task completion. This enables the Agent to perform **Self-Correction** upon receiving test failures or compiler error feedbacks.
