@@ -1,5 +1,13 @@
 # Forge Version History
 
+## v0.5.0-planning (2026-06-30)
+
+In this version, we introduced structured **Planning & Replanning**. This forces the Agent to always maintain a Plan checklist in its context, and dynamically rewrite it upon discovering environmental roadblocks.
+
+### Key Changes
+- **Structured Prompt Upgrade (`forge/runner.py`)**: Modified `DEFAULT_SYSTEM_PROMPT` to enforce `Plan / Thought / Action` sections on agent reasoning outputs.
+- **Simulation Demo (`examples/demo_planning.py`)**: Created a simulator demonstrating the agent's plan evolving from 2 steps to 4 steps when blocked by a missing dependency.
+
 ## v0.4.0-checkpoint (2026-06-26)
 
 In this version, we introduced **Checkpointing and Session Resuming**. This allows the Coding Agent to preserve its state (messages history, iterations count, and trace steps) to disk, allowing it to recover and resume from crashes or interruptions.

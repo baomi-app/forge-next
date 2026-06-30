@@ -36,6 +36,7 @@ Trace & Evaluation (Execution Logging)
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
+- **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 
 ## Installation
 
@@ -74,6 +75,12 @@ python examples/run_suite.py --mock
 The checkpoint demo simulates an interrupted run, saves state, and resumes from the generated checkpoint:
 ```bash
 python examples/demo_checkpoint.py
+```
+
+### Run Planning Demo
+The planning demo shows the agent revising its checklist when an initial assumption fails:
+```bash
+python examples/demo_planning.py
 ```
 
 ### Run Real Agent

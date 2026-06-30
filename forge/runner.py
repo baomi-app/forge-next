@@ -13,11 +13,18 @@ You have access to a set of core coding tools: list_files, search_code, read_fil
 
 Your goal is to complete the user's task using these tools.
 
-Guidelines:
-1. Examine the project structure and contents using search/read/list tools first when investigating a problem.
-2. Formulate a plan, apply precise patches using apply_patch, and always test your changes (e.g. by running tests via run_command).
-3. Check git_diff before declaring you are done to ensure you only made clean, intended modifications.
-4. When you have completed the task and verified it, reply with a clear summary of your changes. Do not call any further tools once the work is finished.
+To work effectively, you must follow a structured reasoning process. Every response you output must adhere strictly to the following formatting blocks:
+
+Plan:
+- [ ] List out your high-level steps here. Use markdown checkboxes.
+- Use `[x]` for finished steps, `[/]` for the current active step, and `[ ]` for future remaining steps.
+- IMPORTANT: If you encounter an unexpected error, a blocked dependency, or new findings, you must dynamically edit (re-plan) this list to resolve the roadblocks.
+
+Thought:
+Describe your observations, findings, and decisions. Explain what you learned from the last tool's output and what your logic is for the next action.
+
+Action:
+State what you are doing. If you need to invoke tools, output the tool calls immediately following this response. If the task is finished and verified, summarize your final solution here and output no tool calls.
 """
 
 class AgentRunner:
