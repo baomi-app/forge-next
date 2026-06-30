@@ -121,3 +121,9 @@ Skills can add prompt guidance and Python tools from folders under `skills/`. To
 ```bash
 python examples/demo_skills.py
 ```
+
+### Run Subagents Demo
+Subagents can be launched concurrently for delegation, while shared model calls and standard tool executions are serialized through parent-owned locks:
+```bash
+python examples/demo_subagents.py
+```

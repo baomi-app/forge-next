@@ -95,7 +95,7 @@ class ToolRegistry:
         if name not in self.tools:
             return f"Error: Tool '{name}' is not registered."
         try:
-            # Check tool signature for 'sandbox' and inject if expected (wrapped in try-except for lambda fallback)
+            # Check tool signature for 'sandbox' / 'runner' and inject if expected (wrapped in try-except for lambda fallback)
             try:
                 sig = inspect.signature(self.tools[name])
                 if "sandbox" in sig.parameters:
@@ -361,3 +361,50 @@ def git_diff(sandbox: Optional[BaseSandbox] = None) -> str:
             return diff_output
     except Exception as e:
         return f"Error executing git diff: {str(e)}"
+
+
+@tool
+def invoke_subagent(role: str, task: str, runner: Optional[Any] = None) -> str:
+    """Spawns a specialized subagent to perform a specific sub-task in the same workspace.
+
+    Args:
+        role (str): The specialized role of the subagent (e.g. 'SecurityExpert', 'QATester').
+        task (str): The specific query/sub-task for the subagent to solve.
+    """
+    if not runner:
+        return "Error: Parent runner pointer was not injected."
+
+    # Local import to prevent circular dependency
+    from forge.runner import AgentRunner
+
+    print(f"\n[Parent Agent] Spawning subagent '{role}' to solve task: '{task}'")
+
+    # Instantiate child runner sharing parent's model, workspace dir and verifier rules
+    sub_runner = AgentRunner(
+        model=runner.model,
+        system_prompt=f"You are a specialized subagent acting as: '{role}'.\nYour task is: '{task}'.\nPerform your tasks and return a concise summary of your work when done.",
+        workspace_dir=runner.workspace_dir,
+        test_command=runner.verifier.test_command,
+        tool_registry=runner.tool_registry,
+        model_lock=runner.model_lock,
+        tool_lock=runner.tool_lock
+    )
+
+    # Bind sandbox to share the same physical work environment
+    sub_runner.sandbox = runner.sandbox
+
+    # Generate distinct checkpoint file to prevent filename collision
+    sub_checkpoint = f"subagent_{role.lower()}_checkpoint.json"
+
+    try:
+        # Run sub-agent loop
+        sub_trace = sub_runner.run(
+            task=task,
+            max_iterations=4,
+            checkpoint_path=sub_checkpoint
+        )
+
+        print(f"[Parent Agent] Subagent '{role}' finished execution.")
+        return f"[Subagent '{role}' Report]:\n{sub_trace.final_response}"
+    except Exception as e:
+        return f"Error executing subagent '{role}': {str(e)}"

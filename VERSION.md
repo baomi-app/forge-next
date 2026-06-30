@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.10.0-subagents (2026-06-30)
+
+In this version, we introduced a concurrent **Subagents** pattern. This enables parent Orchestrator agents to dynamically delegate specialized sub-tasks to multiple child agents concurrently using a thread pool, while standard tools are executed sequentially to prevent write resource collisions.
+
+### Key Changes
+- **Selective Concurrency Scheduler (`forge/runner.py`)**: Refactored the tool execution loop to divide tool calls: `invoke_subagent` runs in parallel using `ThreadPoolExecutor`, while file and CLI modifying operations (like `edit_file_block`, `run_command`) run sequentially to prevent write collisions.
+- **Parent Runner Injection (`forge/tools.py`, `forge/runner.py`)**: Added dynamic dependency injection of parent runner pointers inside ToolRegistry execution pipelines (hidden from LLM JSON schemas).
+- **Subagent Delegation Tool (`forge/tools.py`)**: Created `invoke_subagent` function instantiating sub-runners, sharing model references/sandboxes, and parsing child trace outputs.
+- **Orchestration Demo (`examples/demo_subagents.py`)**: Demonstrates a parallel 3-agent teamwork flow (Orchestrator concurrently spawning SecurityExpert and LinterExpert) auditing buffer overflows and PEP8 code styling, patching code, and running bounds verification.
+
 ## v0.9.0-skills (2026-06-30)
 
 In this version, we introduced a folder-based **Skill Bundle** architecture. Each Skill is a standalone directory holding prompt guidelines (`SKILL.md`) for cognitive reasoning, and custom scripts (`scripts/*.py`) containing `@skill` tools for imperative actions.

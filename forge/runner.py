@@ -1,7 +1,9 @@
 import os
 import json
 import copy
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+from threading import RLock
 from forge.context import Context
 from forge.model import BaseModel
 from forge.tools import ToolRegistry, registry
@@ -37,7 +39,9 @@ class AgentRunner:
         system_prompt: Optional[str] = None,
         workspace_dir: str = ".",
         test_command: Optional[str] = None,
-        tool_registry: Optional[ToolRegistry] = None
+        tool_registry: Optional[ToolRegistry] = None,
+        model_lock: Optional[RLock] = None,
+        tool_lock: Optional[RLock] = None
     ):
         self.model = model
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -45,6 +49,8 @@ class AgentRunner:
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
         self.tool_registry = tool_registry or registry
+        self.model_lock = model_lock or RLock()
+        self.tool_lock = tool_lock or RLock()
 
     def save_checkpoint(self, filepath: str, current_iteration: int, context: Context, trace: ExecutionTrace):
         """Serialize current run memory to disk."""
@@ -144,7 +150,8 @@ class AgentRunner:
 
                 # 3. Model call (Context -> Model)
                 try:
-                    content, tool_calls = self.model.generate(messages, tool_definitions)
+                    with self.model_lock:
+                        content, tool_calls = self.model.generate(messages, tool_definitions)
                 except Exception as e:
                     err_msg = f"Fatal Error calling model: {str(e)}"
                     print(f"[Runner] {err_msg}")
@@ -197,35 +204,83 @@ class AgentRunner:
                 # Tool-calling chat APIs require matching tool results to their respective assistant tool calls.
                 context.add_assistant(content, tool_calls)
 
-                # 5. Tool Executor / Sandbox (Tool Executor)
-                for tool_call in tool_calls:
-                    tc_id = tool_call.get("id", "")
-                    func_name = tool_call.get("function", {}).get("name", "")
-                    args_str = tool_call.get("function", {}).get("arguments", "{}")
+                # Partition tool calls: run subagents concurrently, run standard tools sequentially
+                subagent_calls = []
+                standard_calls = []
+                for tc in tool_calls:
+                    func_name = tc.get("function", {}).get("name", "")
+                    if func_name == "invoke_subagent":
+                        subagent_calls.append(tc)
+                    else:
+                        standard_calls.append(tc)
 
-                    print(f"[Runner] Requesting Tool: {func_name} with args: {args_str}")
+                # 1. Run Subagents concurrently in ThreadPoolExecutor
+                if subagent_calls:
+                    tool_results_futures = {}
+                    with ThreadPoolExecutor() as executor:
+                        for tool_call in subagent_calls:
+                            tc_id = tool_call.get("id", "")
+                            func_name = tool_call.get("function", {}).get("name", "")
+                            args_str = tool_call.get("function", {}).get("arguments", "{}")
 
-                    # Parse arguments
-                    try:
-                        args = json.loads(args_str)
-                    except json.JSONDecodeError as je:
-                        error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
-                        print(f"[Runner] {error_output}")
-                        context.add_tool_result(tc_id, func_name, error_output)
-                        step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
-                        continue
+                            print(f"[Runner] Requesting Tool (Async Launch): {func_name} with args: {args_str}")
+                            # Parse arguments
+                            try:
+                                args = json.loads(args_str)
+                            except json.JSONDecodeError as je:
+                                error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
+                                print(f"[Runner] {error_output}")
+                                context.add_tool_result(tc_id, func_name, error_output)
+                                step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
+                                continue
 
-                    # Execute tool
-                    result = self.tool_registry.execute(func_name, args, sandbox=self.sandbox)
-                    print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
+                            # Execute tool
+                            future = executor.submit(self.tool_registry.execute, func_name, args, self.sandbox, self)
+                            tool_results_futures[future] = (tc_id, func_name)
 
-                    # Add tool result back to context history
-                    context.add_tool_result(tc_id, func_name, result)
-                    step.tool_results.append({
-                        "tool_call_id": tc_id,
-                        "name": func_name,
-                        "content": result
-                    })
+                        for future, (tc_id, func_name) in tool_results_futures.items():
+                            try:
+                                result = future.result()
+                            except Exception as exc:
+                                result = f"Error executing tool '{func_name}' dynamically: {str(exc)}"
+
+                            print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
+                            # Add tool result back to context history
+                            context.add_tool_result(tc_id, func_name, result)
+                            step.tool_results.append({
+                                "tool_call_id": tc_id,
+                                "name": func_name,
+                                "content": result
+                            })
+
+                # 2. Run standard tools sequentially to prevent file write collisions
+                if standard_calls:
+                    for tool_call in standard_calls:
+                        tc_id = tool_call.get("id", "")
+                        func_name = tool_call.get("function", {}).get("name", "")
+                        args_str = tool_call.get("function", {}).get("arguments", "{}")
+
+                        print(f"[Runner] Requesting Tool (Sequential): {func_name} with args: {args_str}")
+                        # Parse arguments
+                        try:
+                            args = json.loads(args_str)
+                        except json.JSONDecodeError as je:
+                            error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
+                            print(f"[Runner] {error_output}")
+                            context.add_tool_result(tc_id, func_name, error_output)
+                            step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
+                            continue
+                        # Execute tool
+                        with self.tool_lock:
+                            result = self.tool_registry.execute(func_name, args, sandbox=self.sandbox, runner=self)
+                        print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
+                        # Add tool result back to context history
+                        context.add_tool_result(tc_id, func_name, result)
+                        step.tool_results.append({
+                            "tool_call_id": tc_id,
+                            "name": func_name,
+                            "content": result
+                        })
 
                 step.stop_timer()
                 trace.add_step(step)
