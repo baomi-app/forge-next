@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.13.0-project-verifier (2026-07-01)
+
+In this version, we upgraded the verifier from a fixed Python-only gate into a **Project-Aware Verifier**. The agent can now detect common project types and run discovered validation commands when no explicit test command is configured.
+
+### Key Changes
+- **Project Profile Detection (`forge/verifier.py`)**: Detects Python, Node, Go, and Rust workspaces from project files and source extensions.
+- **Verification Check Discovery (`forge/verifier.py`)**: Discovers common runnable checks including Python unittest discovery, pytest configuration when pytest is available, package manager scripts (`lint`, `typecheck`, `test`), `go test ./...`, and `cargo test`.
+- **Structured Verification Reports (`forge/verifier.py`)**: Reports each check with category, command source, exit code, duration, and failure classification to make self-correction feedback easier for the agent to act on.
+- **README Update (`README.md`)**: Documents automatic project verification discovery and the explicit `--test-command` override.
+
 ## v0.12.0-change-transactions (2026-07-01)
 
 In this version, we introduced **Change Transactions** so each agent run can track, inspect, and revert workspace file changes relative to a captured task baseline.

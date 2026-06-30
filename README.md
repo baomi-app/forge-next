@@ -29,7 +29,7 @@ Forge keeps the runtime split into focused components:
 - `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
-- `Verifier`: runs syntax checks and configured test commands.
+- `Verifier`: runs syntax checks, configured test commands, and project-discovered checks.
 - `ChangeSet`: tracks task-scoped workspace changes and supports summaries, diffs, checkpoint persistence, and revert.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
@@ -49,7 +49,7 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `revert_changes`: Revert all file changes made since the current task transaction baseline.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
-- **Verifier Gatekeeper**: Automatically checks Python syntax and optional test commands before allowing the agent to finish.
+- **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
 - **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
@@ -123,6 +123,8 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1" # Or any proxy/alternative endpoint
 python examples/run_agent.py "Your prompt here" --test-command "python -m unittest"
 ```
+
+If `--test-command` is omitted, Forge still performs Python syntax checks and tries to discover common project verification commands from files such as `package.json`, `go.mod`, `Cargo.toml`, pytest configuration, or Python test files.
 
 To resume a saved run:
 ```bash
