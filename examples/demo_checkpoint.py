@@ -68,18 +68,29 @@ class CheckpointMockModel(BaseModel):
             print("\n!!! [MockModel] CRITICAL ERROR: Simulated API Connection Disconnected !!!")
             raise RuntimeError("API Connection Lost: Network Timeout.")
             
-        # Iteration 4: Success if we have resumed
+        # Iteration 4: Success if we have resumed; inspect transaction state first
         elif msg_count <= 8 and self.is_resumed:
-            print("[MockModel] Thinking: Resumed successfully! Let's run tests.")
+            print("[MockModel] Thinking: Resumed successfully! I will inspect the restored transaction diff.")
             return (
-                "I have resumed the session. Let me run unit tests to verify the fix.",
+                "I have resumed the session. I will inspect the restored change transaction first.",
                 [{"id": "c_call_4", "type": "function", "function": {
+                    "name": "change_summary",
+                    "arguments": json.dumps({"include_diff": True})
+                }}]
+            )
+
+        # Iteration 5: Run tests after confirming the transaction survived resume
+        elif msg_count <= 10 and self.is_resumed:
+            print("[MockModel] Thinking: Transaction baseline survived resume. Let's run tests.")
+            return (
+                "The transaction diff is still available after resume. Let me run unit tests.",
+                [{"id": "c_call_5", "type": "function", "function": {
                     "name": "run_command",
                     "arguments": json.dumps({"command": "python -m unittest test_main.py"})
                 }}]
             )
             
-        # Iteration 5
+        # Iteration 6
         else:
             print("[MockModel] Thinking: Tests passed. Declaring done.")
             return ("The task is successfully complete. Checkpoint test passed!", None)

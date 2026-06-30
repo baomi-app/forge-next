@@ -25,18 +25,19 @@ Trace & Evaluation (Execution Logging)
 Forge keeps the runtime split into focused components:
 
 - `AgentRunner`: orchestrates the main loop, model calls, tool dispatch, completion checks, checkpoint timing, and trace return.
-- `AgentSession`: owns per-run state such as context, trace, current iteration, and checkpoint serialization.
+- `AgentSession`: owns per-run state such as context, trace, change transaction state, current iteration, and checkpoint serialization.
 - `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
 - `Verifier`: runs syntax checks and configured test commands.
+- `ChangeSet`: tracks task-scoped workspace changes and supports summaries, diffs, checkpoint persistence, and revert.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **7 Core Coding Tools**:
+- **9 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `read_file`: Retrieve file content with optional line numbers.
@@ -44,12 +45,15 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `edit_file_block`: Replace a 1-indexed inclusive line range.
   - `run_command`: Execute verification commands or tests.
   - `git_diff`: Inspect modifications.
+  - `change_summary`: Inspect the current task transaction changes and diff.
+  - `revert_changes`: Revert all file changes made since the current task transaction baseline.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Verifier Gatekeeper**: Automatically checks Python syntax and optional test commands before allowing the agent to finish.
 - **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
+- **Change Transactions**: Captures a workspace baseline for each run, reports task-scoped changes, and can revert the current transaction.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -104,6 +108,12 @@ python examples/demo_planning.py
 The context demo shows large noisy logs being folded while the relevant traceback remains available to the agent:
 ```bash
 python examples/demo_context.py
+```
+
+### Run Change Transactions Demo
+The change transactions demo shows an agent inspecting a bad edit, reverting it to the task baseline, and then applying the correct fix:
+```bash
+python examples/demo_changes.py
 ```
 
 ### Run Real Agent

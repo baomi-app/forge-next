@@ -72,6 +72,7 @@ class AgentRunner:
             system_prompt=self.system_prompt,
             test_command=self.verifier.test_command,
         )
+        self.change_set = self.session.change_set
         self.model_lock = model_lock or RLock()
         self.tool_lock = tool_lock or RLock()
         self.subagent_manager = SubagentManager(self)
@@ -90,6 +91,7 @@ class AgentRunner:
         self.session.context = context
         self.session.trace = trace
         self.session.test_command = self.verifier.test_command
+        self.session.change_set = self.change_set
         try:
             self.session.save_checkpoint(filepath)
             print(f"[Checkpoint] Successfully saved session state to {filepath}")
@@ -133,6 +135,7 @@ class AgentRunner:
                 start_iteration = self.session.current_iteration
                 self.system_prompt = self.session.system_prompt
                 self.verifier.test_command = self.session.test_command
+                self.change_set = self.session.change_set
                 restored = True
 
                 print(f"[Runner] Resuming agent loop from Iteration {start_iteration + 1}...")

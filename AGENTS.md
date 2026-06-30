@@ -22,6 +22,7 @@ Forge Next is a coding agent for real software engineering work. Keep changes ea
 - Put model-requested tool execution details in `ToolExecutor`, including tool-call partitioning, JSON argument parsing, dependency injection, and result recording.
 - Put subagent creation, shared runtime resources, and subagent checkpoint naming in `SubagentManager`.
 - Put no-tool completion decisions in `CompletionGate`; verifier pass/block handling should not be reimplemented in `AgentRunner`.
+- Put workspace edit baselines, summaries, diffs, and reverts in `ChangeSet`.
 - Keep tools thin. When a tool needs runtime state, prefer injecting a narrow runtime object such as `session` or a manager instead of reaching across the whole runner.
 
 ## Verification
@@ -29,6 +30,8 @@ Forge Next is a coding agent for real software engineering work. Keep changes ea
 Run focused checks for the feature you touch, and use these broader checks before finishing larger changes:
 
 ```bash
-python -m compileall forge examples skills
+python -m compileall forge examples skills tests
+python -m unittest discover
+for demo in examples/demo_*.py; do python "$demo"; done
 python examples/run_suite.py --mock
 ```

@@ -1,5 +1,17 @@
 # Forge Version History
 
+## v0.12.0-change-transactions (2026-07-01)
+
+In this version, we introduced **Change Transactions** so each agent run can track, inspect, and revert workspace file changes relative to a captured task baseline.
+
+### Key Changes
+- **ChangeSet Core (`forge/changes.py`)**: Captures workspace baselines, detects added/modified/deleted files, renders unified diffs, serializes baselines for checkpoints, and reverts files to the baseline.
+- **Runner Integration (`forge/runner.py`)**: Creates a transaction baseline for each `AgentRunner` instance, saves it into checkpoints, restores it on resume, and exposes it to injected tools.
+- **Transaction Tools (`forge/core_tools/changes.py`)**: Added `change_summary` and `revert_changes` so agents can review or roll back the current task transaction.
+- **Simulation Demo (`examples/demo_changes.py`)**: Demonstrates inspecting a bad edit, reverting the transaction, applying the correct fix, and passing verifier checks.
+- **Unit Tests (`tests/test_changes.py`)**: Covers change detection, diff formatting, revert behavior, and transaction tool registration.
+- **README Update (`README.md`)**: Documents change transactions and the expanded core tool set.
+
 ## v0.11.0-runtime-architecture (2026-07-01)
 
 In this version, we initialized the **Forge Next Runtime Architecture** so the runner can stay small while dedicated components own session state, tool execution, completion checks, subagent orchestration, and dynamic tool discovery.

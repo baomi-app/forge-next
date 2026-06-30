@@ -7,8 +7,9 @@ from forge.trace import StepTrace
 
 
 class TestAgentSession(unittest.TestCase):
-    def test_serializes_context_and_trace(self):
+    def test_serializes_context_trace_and_change_set(self):
         with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
             session = AgentSession(
                 workspace_dir=workspace,
                 system_prompt="You are a coding agent.",
@@ -21,6 +22,7 @@ class TestAgentSession(unittest.TestCase):
             session.trace.add_step(step)
             session.current_iteration = 1
 
+            self._write_file(workspace, "app.py", "VALUE = 2\n")
             data = session.to_dict()
 
             restored = AgentSession(
@@ -36,6 +38,10 @@ class TestAgentSession(unittest.TestCase):
             self.assertEqual(restored.current_iteration, 1)
             self.assertEqual(restored.context.messages, session.context.messages)
             self.assertEqual(restored.trace.steps[0].model_text_response, "I will edit the file.")
+            self.assertEqual(
+                [(change.path, change.status) for change in restored.change_set.changes()],
+                [("app.py", "modified")],
+            )
 
     def test_checkpoint_round_trip(self):
         with tempfile.TemporaryDirectory() as workspace:

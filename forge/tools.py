@@ -6,7 +6,6 @@ import pkgutil
 from forge import core_tools
 from forge.tool_registry import ToolRegistry, registry, tool
 
-
 def load_core_tools() -> None:
     """Import all built-in tool modules so they register themselves."""
     for module in pkgutil.iter_modules(core_tools.__path__, f"{core_tools.__name__}."):
