@@ -60,15 +60,32 @@ class ToolRegistry:
         self.tool_definitions.append(definition)
         return func
 
+    def register_mcp_tool(self, name: str, description: str, input_schema: Dict[str, Any], execute_callback: Callable):
+        """Dynamically registers an external MCP tool definition and maps its call logic."""
+        self.tools[name] = execute_callback
+        definition = {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": input_schema
+            }
+        }
+        self.tool_definitions.append(definition)
+        print(f"[Tool Registry] Dynamically registered external MCP tool: '{name}'")
+
     def execute(self, name: str, args: Dict[str, Any], sandbox: Optional[BaseSandbox] = None) -> str:
         """Executes a registered tool, dynamically injecting the runner's Sandbox instance."""
         if name not in self.tools:
             return f"Error: Tool '{name}' is not registered."
         try:
-            # Check tool signature for 'sandbox' and inject if expected
-            sig = inspect.signature(self.tools[name])
-            if "sandbox" in sig.parameters:
-                args["sandbox"] = sandbox
+            # Check tool signature for 'sandbox' and inject if expected (wrapped in try-except for lambda fallback)
+            try:
+                sig = inspect.signature(self.tools[name])
+                if "sandbox" in sig.parameters:
+                    args["sandbox"] = sandbox
+            except (ValueError, TypeError):
+                pass
 
             result = self.tools[name](**args)
             return str(result)

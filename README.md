@@ -109,3 +109,9 @@ The sandbox demo shows blocked dangerous commands, timeout handling, and workspa
 ```bash
 python examples/demo_sandbox.py
 ```
+
+### Run MCP Demo
+The MCP demo launches a local stdio JSON-RPC server, discovers its tools, and shuts the subprocess down cleanly:
+```bash
+python examples/demo_mcp.py
+```

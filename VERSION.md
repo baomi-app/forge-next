@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.8.0-mcp (2026-06-30)
+
+In this version, we implemented the **Model Context Protocol (MCP)** client. This allows the Agent to interface with external tool servers dynamically via stdio pipelines utilizing JSON-RPC 2.0 messages.
+
+### Key Changes
+- **MCP Client (`forge/mcp.py`)**: Built an stdio Popen process manager and a thread-safe listener loop resolving JSON-RPC callback futures. Supports protocol handshake, tool query (`tools/list`), and execution (`tools/call`).
+- **Dynamic Schema Tool Injection (`forge/tools.py`)**: Enhanced `ToolRegistry` to dynamically register remote MCP JSON schemas, wrapping calls in closures executing subprocess IPC.
+- **Mock MCP Server (`examples/mock_mcp_server.py`)**: Zero-dependency Python process exporting a remote mathematical tool over standard output streams.
+- **MCP Orchestration Demo (`examples/demo_mcp.py`)**: Runs handshake, dynamic registration, model trace execution, and child process cleanup.
+
 ## v0.7.0-sandbox (2026-06-30)
 
 In this version, we introduced a pluggable **Sandbox & Execution Limits** architecture. This intercepts hostile CLI commands, enforces time limits on child processes, restricts path traversal, and decouples tools from raw system calls.
