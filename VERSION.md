@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.6.0-context (2026-06-30)
+
+In this version, we implemented a production-grade **Context Compiler** pattern with **Smart Traceback Extraction** and **History Message Folding** to prevent token bloat while retaining critical errors across multi-turn sessions.
+
+### Key Changes
+- **Context Compiler (`forge/context.py`)**: Enhanced `get_messages()` to dynamically compile a token-efficient messages array on the fly.
+- **Smart Traceback Extraction (`forge/context.py`)**: Uses regex to identify Python tracebacks within large tool outputs, preserving only the stack trace (max 15 lines) and filtering out irrelevant logging noise.
+- **History Message Folding (`forge/context.py`)**: Overwrites the content of older turns (older than 2 turns) with short placeholders like `[Output of tool X folded]` and `[Thoughts folded]`, saving 95%+ of historical tokens.
+- **Simulation Demo (`examples/demo_context.py`)**: Simulates the agent patching an AttributeError despite the test command producing a massive $8.8K$ log of database connections.
+
 ## v0.5.0-planning (2026-06-30)
 
 In this version, we introduced structured **Planning & Replanning**. This forces the Agent to always maintain a Plan checklist in its context, and dynamically rewrite it upon discovering environmental roadblocks.

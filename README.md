@@ -37,6 +37,7 @@ Trace & Evaluation (Execution Logging)
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
+- **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
 
 ## Installation
 
@@ -81,6 +82,12 @@ python examples/demo_checkpoint.py
 The planning demo shows the agent revising its checklist when an initial assumption fails:
 ```bash
 python examples/demo_planning.py
+```
+
+### Run Context Compiler Demo
+The context demo shows large noisy logs being folded while the relevant traceback remains available to the agent:
+```bash
+python examples/demo_context.py
 ```
 
 ### Run Real Agent
