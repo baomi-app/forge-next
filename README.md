@@ -38,6 +38,7 @@ Trace & Evaluation (Execution Logging)
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
+- **Local Execution Boundary**: Workspace path checks, command timeouts, and shell-free command execution for safer local demos. This is not a hardened OS sandbox for untrusted code.
 
 ## Installation
 
@@ -101,4 +102,10 @@ python examples/run_agent.py "Your prompt here" --test-command "python -m unitte
 To resume a saved run:
 ```bash
 python examples/run_agent.py --resume checkpoint.json --trace-file trace.json
+```
+
+### Run Sandbox Demo
+The sandbox demo shows blocked dangerous commands, timeout handling, and workspace-only file access:
+```bash
+python examples/demo_sandbox.py
 ```

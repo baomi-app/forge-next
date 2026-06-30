@@ -1,5 +1,14 @@
 # Forge Version History
 
+## v0.7.0-sandbox (2026-06-30)
+
+In this version, we introduced a pluggable **Sandbox & Execution Limits** architecture. This intercepts hostile CLI commands, enforces time limits on child processes, restricts path traversal, and decouples tools from raw system calls.
+
+### Key Changes
+- **Sandbox Core (`forge/sandbox.py`)**: Defined abstract `BaseSandbox` and implemented `LocalRestrictedSandbox` supporting regex-based command filtering (`rm -rf`, `sudo`, `curl`, etc.) and execution timeouts.
+- **Dependency Injection (`forge/tools.py` & `forge/runner.py`)**: Registry automatically injects the runner's Sandbox instance to matching tool signature parameters, keeping LLM JSON schemas clean.
+- **Simulation Demo (`examples/demo_sandbox.py`)**: Proves execution blockage of high-risk shell inputs and time limit terminations during runtime.
+
 ## v0.6.0-context (2026-06-30)
 
 In this version, we implemented a production-grade **Context Compiler** pattern with **Smart Traceback Extraction** and **History Message Folding** to prevent token bloat while retaining critical errors across multi-turn sessions.

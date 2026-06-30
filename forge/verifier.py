@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 from typing import Tuple, List, Optional
 
@@ -55,10 +56,13 @@ class Verifier:
             return True, "No test command specified. Skipping test suite verification."
             
         try:
+            argv = shlex.split(self.test_command)
+            if not argv:
+                return False, "Error: Verification test command is empty."
+
             # Run test with 30s timeout
             result = subprocess.run(
-                self.test_command,
-                shell=True,
+                argv,
                 capture_output=True,
                 text=True,
                 cwd=self.workspace_dir,

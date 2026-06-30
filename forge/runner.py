@@ -7,6 +7,7 @@ from forge.model import BaseModel
 from forge.tools import registry
 from forge.trace import ExecutionTrace, StepTrace
 from forge.verifier import Verifier
+from forge.sandbox import LocalRestrictedSandbox
 
 DEFAULT_SYSTEM_PROMPT = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
 You have access to a set of core coding tools: list_files, search_code, read_file, apply_patch, edit_file_block, run_command, and git_diff.
@@ -41,6 +42,7 @@ class AgentRunner:
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
+        self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
 
     def save_checkpoint(self, filepath: str, current_iteration: int, context: Context, trace: ExecutionTrace):
         """Serialize current run memory to disk."""
@@ -210,9 +212,8 @@ class AgentRunner:
                         context.add_tool_result(tc_id, func_name, error_output)
                         step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
                         continue
-
                     # Execute tool
-                    result = registry.execute(func_name, args)
+                    result = registry.execute(func_name, args, sandbox=self.sandbox)
                     print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
 
                     # Add tool result back to context history
