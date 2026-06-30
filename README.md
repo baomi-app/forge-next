@@ -37,9 +37,10 @@ New runtime behavior should land in the narrowest matching component instead of 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **9 Core Coding Tools**:
+- **10 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
+  - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
   - `read_file`: Retrieve file content with optional line numbers.
   - `apply_patch`: Search and replace string to modify files.
   - `edit_file_block`: Replace a 1-indexed inclusive line range.

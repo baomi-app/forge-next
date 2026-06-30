@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.14.0-code-symbols (2026-07-01)
+
+In this version, we added a lightweight **Python Code Symbol Inspector** so agents can orient themselves in a Python workspace before reading entire files.
+
+### Key Changes
+- **Symbol Inspection Tool (`forge/core_tools/symbols.py`)**: Added `inspect_code_symbols`, a standard-library `ast`-based tool that summarizes Python imports, classes, methods, functions, docstring first lines, and source line numbers.
+- **Tool Discovery (`forge/tools.py`)**: Exposes the inspector through automatic built-in tool module discovery.
+- **Unit Tests (`tests/test_tools.py`)**: Covers symbol summaries, parse error reporting, and core tool registration.
+- **README Update (`README.md`)**: Documents the new core tool.
+
 ## v0.13.0-project-verifier (2026-07-01)
 
 In this version, we upgraded the verifier from a fixed Python-only gate into a **Project-Aware Verifier**. The agent can now detect common project types and run discovered validation commands when no explicit test command is configured.
