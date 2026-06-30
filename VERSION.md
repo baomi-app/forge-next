@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.9.0-skills (2026-06-30)
+
+In this version, we introduced a folder-based **Skill Bundle** architecture. Each Skill is a standalone directory holding prompt guidelines (`SKILL.md`) for cognitive reasoning, and custom scripts (`scripts/*.py`) containing `@skill` tools for imperative actions.
+
+### Key Changes
+- **Skill Bundle Loader (`forge/skills.py`)**: Enhanced `SkillsManager` to scan subdirectories, aggregate prompt guidelines from `SKILL.md` (injecting them to Agent system prompts), and dynamically hot-load python tool functions from `scripts/` using `importlib.util`.
+- **Git Commit Expert Skill (`skills/git_expert/`)**: Built a full git expert skill bundle enforcing Angular git commit conventions via regex checks.
+- **Polite Sign-Off Skill (`skills/polite_reply/`)**: Added a cognitive-only (no tools) skill bundle to prove prompt guidelines execution.
+- **Simulation Demo (`examples/demo_skills.py`)**: Demonstrates dynamic rules aggregation, tool rejection, system instruction-aware self-correction, and pass.
+
 ## v0.8.0-mcp (2026-06-30)
 
 In this version, we implemented the **Model Context Protocol (MCP)** client. This allows the Agent to interface with external tool servers dynamically via stdio pipelines utilizing JSON-RPC 2.0 messages.

@@ -115,3 +115,9 @@ The MCP demo launches a local stdio JSON-RPC server, discovers its tools, and sh
 ```bash
 python examples/demo_mcp.py
 ```
+
+### Run Skills Demo
+Skills can add prompt guidance and Python tools from folders under `skills/`. Tool registration is idempotent by name, and runners can use cloned registries when a demo needs isolation:
+```bash
+python examples/demo_skills.py
+```

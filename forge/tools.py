@@ -1,3 +1,4 @@
+import copy
 import os
 import inspect
 import shlex
@@ -11,6 +12,7 @@ class ToolRegistry:
     def __init__(self):
         self.tools: Dict[str, Callable] = {}
         self.tool_definitions: List[Dict[str, Any]] = []
+        self._definition_indexes: Dict[str, int] = {}
 
     def register(self, func: Callable) -> Callable:
         name = func.__name__
@@ -26,7 +28,7 @@ class ToolRegistry:
 
         for param_name, param in sig.parameters.items():
             # Exclude hidden parameters not exposed to LLM
-            if param_name in ("self", "cls", "sandbox"):
+            if param_name in ("self", "cls", "sandbox", "runner"):
                 continue
 
             param_type = "string"
@@ -45,7 +47,7 @@ class ToolRegistry:
             if param.default == inspect.Parameter.empty:
                 required.append(param_name)
 
-        definition = {
+        self._upsert_definition(name, {
             "type": "function",
             "function": {
                 "name": name,
@@ -56,26 +58,40 @@ class ToolRegistry:
                     "required": required
                 }
             }
-        }
-        self.tool_definitions.append(definition)
+        })
         return func
 
     def register_mcp_tool(self, name: str, description: str, input_schema: Dict[str, Any], execute_callback: Callable):
         """Dynamically registers an external MCP tool definition and maps its call logic."""
         self.tools[name] = execute_callback
-        definition = {
+        self._upsert_definition(name, {
             "type": "function",
             "function": {
                 "name": name,
                 "description": description,
                 "parameters": input_schema
             }
-        }
-        self.tool_definitions.append(definition)
+        })
         print(f"[Tool Registry] Dynamically registered external MCP tool: '{name}'")
 
-    def execute(self, name: str, args: Dict[str, Any], sandbox: Optional[BaseSandbox] = None) -> str:
-        """Executes a registered tool, dynamically injecting the runner's Sandbox instance."""
+    def clone(self) -> "ToolRegistry":
+        """Return an isolated copy of this registry for one runner or demo."""
+        cloned = ToolRegistry()
+        cloned.tools = dict(self.tools)
+        cloned.tool_definitions = copy.deepcopy(self.tool_definitions)
+        cloned._definition_indexes = dict(self._definition_indexes)
+        return cloned
+
+    def _upsert_definition(self, name: str, definition: Dict[str, Any]):
+        """Insert or replace a tool schema by name so repeated loads stay idempotent."""
+        if name in self._definition_indexes:
+            self.tool_definitions[self._definition_indexes[name]] = definition
+            return
+        self._definition_indexes[name] = len(self.tool_definitions)
+        self.tool_definitions.append(definition)
+
+    def execute(self, name: str, args: Dict[str, Any], sandbox: Optional[BaseSandbox] = None, runner: Optional[Any] = None) -> str:
+        """Executes a registered tool, dynamically injecting Sandbox and Runner instances."""
         if name not in self.tools:
             return f"Error: Tool '{name}' is not registered."
         try:
@@ -84,6 +100,8 @@ class ToolRegistry:
                 sig = inspect.signature(self.tools[name])
                 if "sandbox" in sig.parameters:
                     args["sandbox"] = sandbox
+                if "runner" in sig.parameters:
+                    args["runner"] = runner
             except (ValueError, TypeError):
                 pass
 

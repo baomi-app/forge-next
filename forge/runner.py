@@ -4,7 +4,7 @@ import copy
 from typing import List, Dict, Any, Optional
 from forge.context import Context
 from forge.model import BaseModel
-from forge.tools import registry
+from forge.tools import ToolRegistry, registry
 from forge.trace import ExecutionTrace, StepTrace
 from forge.verifier import Verifier
 from forge.sandbox import LocalRestrictedSandbox
@@ -36,13 +36,15 @@ class AgentRunner:
         model: BaseModel,
         system_prompt: Optional[str] = None,
         workspace_dir: str = ".",
-        test_command: Optional[str] = None
+        test_command: Optional[str] = None,
+        tool_registry: Optional[ToolRegistry] = None
     ):
         self.model = model
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
+        self.tool_registry = tool_registry or registry
 
     def save_checkpoint(self, filepath: str, current_iteration: int, context: Context, trace: ExecutionTrace):
         """Serialize current run memory to disk."""
@@ -138,7 +140,7 @@ class AgentRunner:
                 step.input_messages = copy.deepcopy(messages)
 
                 # Fetch tool schemas from registry
-                tool_definitions = registry.tool_definitions
+                tool_definitions = self.tool_registry.tool_definitions
 
                 # 3. Model call (Context -> Model)
                 try:
@@ -212,8 +214,9 @@ class AgentRunner:
                         context.add_tool_result(tc_id, func_name, error_output)
                         step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
                         continue
+
                     # Execute tool
-                    result = registry.execute(func_name, args, sandbox=self.sandbox)
+                    result = self.tool_registry.execute(func_name, args, sandbox=self.sandbox)
                     print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
 
                     # Add tool result back to context history
