@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.15.0-change-review-gate (2026-07-01)
+
+In this version, we introduced a **Change Review Gate** so agents can review task-scoped changes before finishing or preparing an atomic commit.
+
+### Key Changes
+- **Change Reviewer (`forge/review.py`)**: Reviews transaction changes for blocking local artifacts, missing test evidence, missing user-facing documentation signals, and broad atomicity risks.
+- **Review Tool (`forge/core_tools/review.py`)**: Added `review_changes`, a transaction-aware tool that reports PASS/WARN/BLOCK status, changed files, findings, commit shape, and a suggested commit message.
+- **Simulation Demo (`examples/demo_review.py`)**: Demonstrates an agent catching a code-only edit, adding the missing test change, and passing review before verification.
+- **Unit Tests (`tests/test_changes.py`)**: Covers empty transactions, local editor artifacts, missing test warnings, clean code-plus-test reviews, and tool registration.
+- **README Update (`README.md`)**: Documents the new review gate, core tool, and runnable demo.
+
 ## v0.14.0-code-symbols (2026-07-01)
 
 In this version, we added a lightweight **Python Code Symbol Inspector** so agents can orient themselves in a Python workspace before reading entire files.

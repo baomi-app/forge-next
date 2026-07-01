@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 from forge.changes import ChangeSet
-from forge.tools import change_summary, revert_changes, registry
+from forge.tools import change_summary, revert_changes, review_changes, registry
 
 
 class FakeRunner:
@@ -140,9 +140,56 @@ class TestChangeSet(unittest.TestCase):
         self.assertIn("modified: app.py", summary)
         self.assertIn("Reverted 1 file change(s)", result)
 
+    def test_review_changes_blocks_empty_transactions(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
+            runner = FakeRunner(ChangeSet(workspace))
+
+            review = review_changes(runner=runner)
+
+        self.assertIn("Status: BLOCK", review)
+        self.assertIn("No transaction changes were found", review)
+
+    def test_review_changes_blocks_local_editor_files(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            change_set = ChangeSet(workspace)
+            self._write_file(workspace, ".vscode/settings.json", "{}\n")
+            runner = FakeRunner(change_set)
+
+            review = review_changes(runner=runner)
+
+        self.assertIn("Status: BLOCK", review)
+        self.assertIn(".vscode/settings.json", review)
+
+    def test_review_changes_warns_when_code_lacks_test_changes(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
+            runner = FakeRunner(ChangeSet(workspace))
+            self._write_file(workspace, "app.py", "VALUE = 2\n")
+
+            review = review_changes(task_goal="update app value", runner=runner)
+
+        self.assertIn("Status: WARN", review)
+        self.assertIn("Code changed but no test files changed", review)
+        self.assertIn("suggested message: feat: update app value", review)
+
+    def test_review_changes_passes_code_with_tests(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
+            self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
+            runner = FakeRunner(ChangeSet(workspace))
+            self._write_file(workspace, "app.py", "VALUE = 2\n")
+            self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
+
+            review = review_changes(runner=runner)
+
+        self.assertIn("Status: PASS", review)
+        self.assertIn("atomic candidate", review)
+
     def test_transaction_tools_are_registered(self):
         self.assertIn("change_summary", registry.tools)
         self.assertIn("revert_changes", registry.tools)
+        self.assertIn("review_changes", registry.tools)
 
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)

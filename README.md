@@ -31,13 +31,14 @@ Forge keeps the runtime split into focused components:
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
 - `Verifier`: runs syntax checks, configured test commands, and project-discovered checks.
 - `ChangeSet`: tracks task-scoped workspace changes and supports summaries, diffs, checkpoint persistence, and revert.
+- `ChangeReviewer`: reviews task-scoped changes for commit readiness, missing verification signals, local artifacts, and atomicity risks.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **10 Core Coding Tools**:
+- **11 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -48,6 +49,7 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `git_diff`: Inspect modifications.
   - `change_summary`: Inspect the current task transaction changes and diff.
   - `revert_changes`: Revert all file changes made since the current task transaction baseline.
+  - `review_changes`: Review the current transaction for delivery and commit-readiness risks.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -55,6 +57,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
 - **Change Transactions**: Captures a workspace baseline for each run, reports task-scoped changes, and can revert the current transaction.
+- **Change Review Gate**: Reviews task-scoped changes for local artifacts, missing test evidence, missing documentation signals, and commit atomicity before finishing.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -115,6 +118,12 @@ python examples/demo_context.py
 The change transactions demo shows an agent inspecting a bad edit, reverting it to the task baseline, and then applying the correct fix:
 ```bash
 python examples/demo_changes.py
+```
+
+### Run Change Review Demo
+The change review demo shows an agent catching a code-only edit, adding the missing test update, and reviewing the transaction again before finishing:
+```bash
+python examples/demo_review.py
 ```
 
 ### Run Real Agent
