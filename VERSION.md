@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.16.0-focused-test-selection (2026-07-01)
+
+In this version, we introduced **Focused Test Selection** so agents can suggest targeted verification commands from the files changed in the current task transaction.
+
+### Key Changes
+- **Focused Test Selector (`forge/focused.py`)**: Discovers focused verification commands from changed test files, demo scripts, sibling tests, and mirrored `tests/` layouts, with a safe unittest discovery fallback for unmapped code.
+- **Suggestion Tool (`forge/core_tools/focused.py`)**: Added `suggest_tests`, a transaction-aware tool that reports changed files, suggested commands, and verification notes.
+- **Simulation Demo (`examples/demo_focused_tests.py`)**: Demonstrates patching a file, selecting the sibling unit test from the transaction, and running the focused test.
+- **Unit Tests (`tests/test_focused.py`)**: Covers project-local test discovery, changed test files, demo scripts, docs-only changes, fallback behavior, and tool registration.
+- **README Update (`README.md`)**: Documents focused test selection and the expanded core tool set.
+
 ## v0.15.0-change-review-gate (2026-07-01)
 
 In this version, we introduced a **Change Review Gate** so agents can review task-scoped changes before finishing or preparing an atomic commit.
