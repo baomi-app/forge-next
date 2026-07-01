@@ -109,6 +109,47 @@ class TestProjectAwareVerifier(unittest.TestCase):
             ),
             "typecheck_failure",
         )
+        self.assertEqual(
+            verifier._classify_failure(
+                VerificationCheck("unittest", "python -m unittest", "test", "Python test files"),
+                "AssertionError: 1 != 2",
+                1,
+            ),
+            "assertion_failure",
+        )
+
+    def test_failed_unittest_report_includes_actionable_triage(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "def value():\n    return 1\n")
+            self._write_file(
+                workspace,
+                "test_app.py",
+                "import unittest\nfrom app import value\n\n"
+                "class TestApp(unittest.TestCase):\n"
+                "    def test_value(self):\n"
+                "        self.assertEqual(value(), 2)\n",
+            )
+
+            passed, report = Verifier(workspace_dir=workspace, test_command=f"{sys.executable} -m unittest test_app").run_tests()
+
+        self.assertFalse(passed)
+        self.assertIn("[Failure Triage]", report)
+        self.assertIn("kind: assertion_failure", report)
+        self.assertIn("next step:", report)
+        self.assertIn("failing test expectation", report)
+        self.assertIn("AssertionError: 1 != 2", report)
+        self.assertNotIn("  - F\n", report)
+
+    def test_syntax_failure_report_includes_triage(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "broken.py", "def broken()\n    return 1\n")
+
+            passed, report = Verifier(workspace_dir=workspace).verify()
+
+        self.assertFalse(passed)
+        self.assertIn("[Failure Triage]", report)
+        self.assertIn("kind: syntax_error", report)
+        self.assertIn("Fix the reported file and line", report)
 
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)

@@ -29,7 +29,7 @@ Forge keeps the runtime split into focused components:
 - `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
-- `Verifier`: runs syntax checks, configured test commands, and project-discovered checks.
+- `Verifier`: runs syntax checks, configured test commands, project-discovered checks, and failure triage.
 - `ChangeSet`: tracks task-scoped workspace changes and supports summaries, diffs, checkpoint persistence, and revert.
 - `ChangeReviewer`: reviews task-scoped changes for commit readiness, missing verification signals, local artifacts, and atomicity risks.
 - `FocusedTestSelector`: discovers focused verification commands from task-scoped changed files.
@@ -55,7 +55,8 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
-- **Self-Correction Loop**: Feeds verifier failures back into the conversation so the agent can repair its own mistakes.
+- **Failure Triage**: Classifies verifier failures such as syntax errors, missing dependencies, assertion failures, timeouts, lint issues, type errors, and missing commands with repair-oriented next steps.
+- **Self-Correction Loop**: Feeds triaged verifier failures back into the conversation so the agent can repair its own mistakes.
 - **Task Suite Benchmark**: Runs predefined coding tasks in isolated temporary workspaces and reports pass/fail metrics.
 - **Workspace Isolation**: Executes each agent run from a configured workspace directory to keep file operations scoped.
 - **Change Transactions**: Captures a workspace baseline for each run, reports task-scoped changes, and can revert the current transaction.
@@ -91,6 +92,12 @@ python examples/demo_mock.py
 The verifier demo shows the agent being blocked by a syntax error, receiving structured feedback, and correcting the file before finishing:
 ```bash
 python examples/demo_verifier.py
+```
+
+### Run Failure Triage Demo
+The failure triage demo shows the verifier classifying a failing assertion and feeding a repair hint back to the agent:
+```bash
+python examples/demo_failure_triage.py
 ```
 
 ### Run Task Suite

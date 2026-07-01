@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.17.0-failure-triage (2026-07-01)
+
+In this version, we introduced **Failure Triage** so verifier failures include a classified cause, short evidence, and a repair-oriented next step for the self-correction loop.
+
+### Key Changes
+- **Failure Triage (`forge/verifier.py`)**: Added structured triage for syntax errors, missing dependencies, assertion failures, missing commands, timeouts, lint failures, typecheck failures, permission errors, and missing files.
+- **Verifier Reports (`forge/verifier.py`)**: Included failure triage blocks in syntax and project verification failure reports so agents receive actionable feedback instead of raw logs alone.
+- **Simulation Demo (`examples/demo_failure_triage.py`)**: Demonstrates an assertion failure being triaged, fed back to the agent, and corrected on the next iteration.
+- **Unit Tests (`tests/test_verifier.py`)**: Covers triage classification and report formatting for failing tests and syntax errors.
+- **README Update (`README.md`)**: Documents failure triage and the runnable demo.
+
 ## v0.16.0-focused-test-selection (2026-07-01)
 
 In this version, we introduced **Focused Test Selection** so agents can suggest targeted verification commands from the files changed in the current task transaction.
