@@ -1,18 +1,19 @@
 import os
-import json
 import copy
-from typing import Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 from threading import RLock
-from forge.context import Context
+from forge.completion import CompletionGate
+from forge.executor import ToolExecutor
 from forge.model import BaseModel
 from forge.tools import ToolRegistry, registry
 from forge.trace import ExecutionTrace, StepTrace
 from forge.verifier import Verifier
 from forge.sandbox import LocalRestrictedSandbox
+from forge.session import AgentSession
+from forge.subagents import SubagentManager
 
-DEFAULT_SYSTEM_PROMPT = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
-You have access to a set of core coding tools: list_files, search_code, read_file, apply_patch, edit_file_block, run_command, and git_diff.
+DEFAULT_SYSTEM_PROMPT_TEMPLATE = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
+You have access to these coding tools: {tool_names}.
 
 Your goal is to complete the user's task using these tools.
 
@@ -30,6 +31,22 @@ Action:
 State what you are doing. If you need to invoke tools, output the tool calls immediately following this response. If the task is finished and verified, summarize your final solution here and output no tool calls.
 """
 
+
+def build_system_prompt(tool_registry: Optional[ToolRegistry] = None) -> str:
+    """Build the default system prompt from the currently registered tool definitions."""
+    active_registry = tool_registry or registry
+    tool_names = [
+        definition["function"]["name"]
+        for definition in active_registry.tool_definitions
+        if definition.get("type") == "function" and "function" in definition
+    ]
+    rendered_names = ", ".join(tool_names) if tool_names else "no tools"
+    return DEFAULT_SYSTEM_PROMPT_TEMPLATE.format(tool_names=rendered_names)
+
+
+DEFAULT_SYSTEM_PROMPT = build_system_prompt(registry)
+
+
 class AgentRunner:
     """The central orchestrator that runs the core Agent Loop with Checkpointing support."""
 
@@ -44,35 +61,44 @@ class AgentRunner:
         tool_lock: Optional[RLock] = None
     ):
         self.model = model
-        self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        self.tool_registry = tool_registry or registry
+        self.system_prompt = system_prompt or build_system_prompt(self.tool_registry)
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
+        self.completion_gate = CompletionGate(self.verifier)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
-        self.tool_registry = tool_registry or registry
+        self.session = AgentSession(
+            workspace_dir=self.workspace_dir,
+            system_prompt=self.system_prompt,
+            test_command=self.verifier.test_command,
+        )
         self.model_lock = model_lock or RLock()
         self.tool_lock = tool_lock or RLock()
+        self.subagent_manager = SubagentManager(self)
+        self.tool_executor = ToolExecutor(
+            tool_registry=self.tool_registry,
+            sandbox=self.sandbox,
+            runner=self,
+            session=self.session,
+            subagent_manager=self.subagent_manager,
+            tool_lock=self.tool_lock,
+        )
 
-    def save_checkpoint(self, filepath: str, current_iteration: int, context: Context, trace: ExecutionTrace):
+    def save_checkpoint(self, filepath: str, current_iteration: int, context, trace: ExecutionTrace):
         """Serialize current run memory to disk."""
-        data = {
-            "task": trace.task,
-            "current_iteration": current_iteration,
-            "system_prompt": self.system_prompt,
-            "messages": context.messages,
-            "test_command": self.verifier.test_command,
-            "trace_steps": [step.to_dict() for step in trace.steps]
-        }
+        self.session.current_iteration = current_iteration
+        self.session.context = context
+        self.session.trace = trace
+        self.session.test_command = self.verifier.test_command
         try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            self.session.save_checkpoint(filepath)
             print(f"[Checkpoint] Successfully saved session state to {filepath}")
         except Exception as e:
             print(f"[Warning] Failed to save checkpoint to {filepath}: {str(e)}")
 
-    def load_checkpoint(self, filepath: str) -> Dict[str, Any]:
+    def load_checkpoint(self, filepath: str):
         """Deserialize checkpoint state from disk."""
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = self.session.load_checkpoint(filepath)
         print(f"[Checkpoint] Successfully loaded session state from {filepath}")
         return data
 
@@ -94,27 +120,20 @@ class AgentRunner:
         # Save original working directory to restore later
         original_cwd = os.getcwd()
 
-        # Determine starting index and reconstruct state if resuming
         start_iteration = 0
-        context = Context(system_prompt=self.system_prompt)
-        trace = None
+        restored = False
 
         # If resume_from is requested, we change CWD to the workspace to find the file
         try:
             os.chdir(self.workspace_dir)
 
             if resume_from and os.path.exists(resume_from):
-                data = self.load_checkpoint(resume_from)
-                task = data["task"]
-                start_iteration = data["current_iteration"]
-
-                # Restore messages history
-                context.messages = data["messages"]
-
-                # Reconstruct execution trace
-                trace = ExecutionTrace(task)
-                for step_data in data["trace_steps"]:
-                    trace.add_step(StepTrace.from_dict(step_data))
+                task = self.session.restore_checkpoint(resume_from)
+                print(f"[Checkpoint] Successfully loaded session state from {resume_from}")
+                start_iteration = self.session.current_iteration
+                self.system_prompt = self.session.system_prompt
+                self.verifier.test_command = self.session.test_command
+                restored = True
 
                 print(f"[Runner] Resuming agent loop from Iteration {start_iteration + 1}...")
         except Exception as e:
@@ -122,10 +141,16 @@ class AgentRunner:
             os.chdir(original_cwd) # Fallback CWD reset
 
         # If starting fresh
-        if trace is None:
-            context.add_user(task)
-            trace = ExecutionTrace(task)
+        if not restored:
+            self.session.start(task)
             print(f"\n[Runner] Starting fresh Agent Loop for task: '{task}'")
+
+        context = self.session.context
+        trace = self.session.trace
+        self.tool_executor.session = self.session
+        self.tool_executor.runner = self
+        self.tool_executor.sandbox = self.sandbox
+        self.tool_executor.subagent_manager = self.subagent_manager
 
         print(f"[Runner] Max iterations: {max_iterations}")
         print(f"[Runner] Workspace isolated to: {self.workspace_dir}")
@@ -168,119 +193,21 @@ class AgentRunner:
 
                 # 4. Handle tool execution / continuation decision
                 if not tool_calls:
-                    # When the model attempts to finish, execute automated verification checks
-                    is_passed, report = self.verifier.verify()
-                    if is_passed:
-                        step.stop_timer()
-                        trace.add_step(step)
-                        print("[Runner] Verifier PASSED! Task complete.")
-                        trace.finish(content or "No final response provided.")
-
-                        # Clean up checkpoint on final success
+                    result = self.completion_gate.evaluate(content, context, trace, step)
+                    if result.passed:
                         if os.path.exists(checkpoint_path):
                             os.remove(checkpoint_path)
                             print(f"[Checkpoint] Cleaned up temporary checkpoint file: {checkpoint_path}")
                         break
-                    else:
-                        print(f"[Runner] Verifier BLOCKED termination. Report:\n{report}")
-                        # Feed verification error back to assistant and user
-                        context.add_assistant(content, None)
-                        context.add_user(report)
 
-                        # Record verifier failure as a pseudo-tool result for tracing
-                        step.tool_results.append({
-                            "tool_call_id": "verifier_check",
-                            "name": "auto_verifier",
-                            "content": report
-                        })
-                        step.stop_timer()
-                        trace.add_step(step)
-
-                        # Save checkpoint even on blocked verification
-                        self.save_checkpoint(checkpoint_path, iteration, context, trace)
-                        continue
+                    self.save_checkpoint(checkpoint_path, iteration, context, trace)
+                    continue
 
                 # If tool calls are requested, we must add the assistant response to the conversation history.
                 # Tool-calling chat APIs require matching tool results to their respective assistant tool calls.
                 context.add_assistant(content, tool_calls)
 
-                # Partition tool calls: run subagents concurrently, run standard tools sequentially
-                subagent_calls = []
-                standard_calls = []
-                for tc in tool_calls:
-                    func_name = tc.get("function", {}).get("name", "")
-                    if func_name == "invoke_subagent":
-                        subagent_calls.append(tc)
-                    else:
-                        standard_calls.append(tc)
-
-                # 1. Run Subagents concurrently in ThreadPoolExecutor
-                if subagent_calls:
-                    tool_results_futures = {}
-                    with ThreadPoolExecutor() as executor:
-                        for tool_call in subagent_calls:
-                            tc_id = tool_call.get("id", "")
-                            func_name = tool_call.get("function", {}).get("name", "")
-                            args_str = tool_call.get("function", {}).get("arguments", "{}")
-
-                            print(f"[Runner] Requesting Tool (Async Launch): {func_name} with args: {args_str}")
-                            # Parse arguments
-                            try:
-                                args = json.loads(args_str)
-                            except json.JSONDecodeError as je:
-                                error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
-                                print(f"[Runner] {error_output}")
-                                context.add_tool_result(tc_id, func_name, error_output)
-                                step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
-                                continue
-
-                            # Execute tool
-                            future = executor.submit(self.tool_registry.execute, func_name, args, self.sandbox, self)
-                            tool_results_futures[future] = (tc_id, func_name)
-
-                        for future, (tc_id, func_name) in tool_results_futures.items():
-                            try:
-                                result = future.result()
-                            except Exception as exc:
-                                result = f"Error executing tool '{func_name}' dynamically: {str(exc)}"
-
-                            print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
-                            # Add tool result back to context history
-                            context.add_tool_result(tc_id, func_name, result)
-                            step.tool_results.append({
-                                "tool_call_id": tc_id,
-                                "name": func_name,
-                                "content": result
-                            })
-
-                # 2. Run standard tools sequentially to prevent file write collisions
-                if standard_calls:
-                    for tool_call in standard_calls:
-                        tc_id = tool_call.get("id", "")
-                        func_name = tool_call.get("function", {}).get("name", "")
-                        args_str = tool_call.get("function", {}).get("arguments", "{}")
-
-                        print(f"[Runner] Requesting Tool (Sequential): {func_name} with args: {args_str}")
-                        # Parse arguments
-                        try:
-                            args = json.loads(args_str)
-                        except json.JSONDecodeError as je:
-                            error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
-                            print(f"[Runner] {error_output}")
-                            context.add_tool_result(tc_id, func_name, error_output)
-                            step.tool_results.append({"tool_call_id": tc_id, "name": func_name, "content": error_output})
-                            continue
-                        # Execute tool
-                        with self.tool_lock:
-                            result = self.tool_registry.execute(func_name, args, sandbox=self.sandbox, runner=self)
-                        print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
-                        # Add tool result back to context history
-                        context.add_tool_result(tc_id, func_name, result)
-                        step.tool_results.append({
-                            "tool_call_id": tc_id,
-                            "name": func_name,
-                            "content": result
-                        })
+                self.tool_executor.execute_tool_calls(tool_calls, context, step)
 
                 step.stop_timer()
                 trace.add_step(step)

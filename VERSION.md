@@ -1,5 +1,17 @@
 # Forge Version History
 
+## v0.11.0-runtime-architecture (2026-07-01)
+
+In this version, we initialized the **Forge Next Runtime Architecture** so the runner can stay small while dedicated components own session state, tool execution, completion checks, subagent orchestration, and dynamic tool discovery.
+
+### Key Changes
+- **Runtime Decomposition (`forge/runner.py`, `forge/session.py`, `forge/executor.py`, `forge/completion.py`)**: Split loop state, tool dispatch, and completion handling out of the monolithic runner path.
+- **Tool Registry (`forge/tool_registry.py`)**: Centralized tool registration, schema generation, dependency injection, and execution behind a dedicated registry.
+- **Core Tool Modules (`forge/core_tools/`)**: Moved built-in tools into focused modules and made `forge/tools.py` discover them dynamically.
+- **Subagent Manager (`forge/subagents.py`)**: Isolated subagent creation and parent resource sharing from runner orchestration.
+- **Unit Tests (`tests/test_runner.py`, `tests/test_executor.py`, `tests/test_session.py`, `tests/test_completion.py`, `tests/test_subagents.py`)**: Covers the new component boundaries.
+- **Repository Guidance (`AGENTS.md`)**: Added agent-facing development and atomic commit rules.
+
 ## v0.10.0-subagents (2026-06-30)
 
 In this version, we introduced a concurrent **Subagents** pattern. This enables parent Orchestrator agents to dynamically delegate specialized sub-tasks to multiple child agents concurrently using a thread pool, while standard tools are executed sequentially to prevent write resource collisions.

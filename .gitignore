@@ -8,4 +8,5 @@ venv/
 .DS_Store
 # Traces or temporary run outputs
 *.json
+!baomi.json
 .vscode/

@@ -1,0 +1,41 @@
+{
+  "name": "Forge Next",
+  "status": "wip",
+  "accent": {
+    "from": "#38bdf8",
+    "to": "#22c55e"
+  },
+  "platform": {
+    "en": "Python / CLI",
+    "zh": "Python / 命令行"
+  },
+  "tagline": {
+    "en": "A coding agent for real software engineering work.",
+    "zh": "面向真实软件工程工作的编程代理。"
+  },
+  "description": {
+    "en": "Forge Next is growing toward a coding agent that can understand a repository, plan and make changes, verify its work, recover from failures, collaborate with humans, and prepare clean delivery units.",
+    "zh": "Forge Next 的目标是成为能理解代码仓库、规划并执行修改、验证结果、从失败中恢复、和人协作，并整理干净交付单元的编程代理。"
+  },
+  "features": {
+    "en": [
+      "Works inside a local repository and keeps code changes visible.",
+      "Uses verification and failure feedback to improve its own work.",
+      "Builds toward clean review and delivery workflows, not just one-off edits."
+    ],
+    "zh": [
+      "在本地代码仓库中工作，并保持代码变更可检查。",
+      "利用验证结果和失败反馈改进自己的工作。",
+      "面向清晰的审查和交付流程，而不只是一次性改代码。"
+    ]
+  },
+  "links": [
+    {
+      "label": {
+        "en": "View on GitHub",
+        "zh": "查看 GitHub"
+      },
+      "href": "https://github.com/baomi-app/forge-next"
+    }
+  ]
+}

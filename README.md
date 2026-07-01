@@ -1,6 +1,8 @@
-# Forge: Minimal Coding Agent for Learning
+# Forge Next: Coding Agent
 
-Forge is a simplified, educational implementation of an AI Coding Agent. The goal of this repository is to break down the complex mechanics of agentic workflows into understandable, step-by-step components.
+Forge Next is a coding agent aimed at real software engineering work, not just a demo of an agent loop. The project is growing toward an agent that can understand a repository, plan and make changes, verify its work, recover from failures, collaborate with humans, and prepare clean delivery units.
+
+This branch starts from the local development loop: task-scoped edits, project checks, failure feedback, diff review, focused verification, checkpoints, and subagent delegation. The current features are building blocks for that larger agent.
 
 ## Core Flow
 
@@ -17,6 +19,19 @@ Tool Executor
  ↓
 Trace & Evaluation (Execution Logging)
 ```
+
+## Runtime Architecture
+
+Forge keeps the runtime split into focused components:
+
+- `AgentRunner`: orchestrates the main loop, model calls, tool dispatch, completion checks, checkpoint timing, and trace return.
+- `AgentSession`: owns per-run state such as context, trace, current iteration, and checkpoint serialization.
+- `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
+- `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
+- `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
+- `Verifier`: runs syntax checks and configured test commands.
+
+New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
@@ -38,7 +53,7 @@ Trace & Evaluation (Execution Logging)
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
-- **Local Execution Boundary**: Workspace path checks, command timeouts, and shell-free command execution for safer local demos. This is not a hardened OS sandbox for untrusted code.
+- **Local Execution Boundary**: Workspace path checks, command timeouts, and shell-free command execution for safer local runs. This is not a hardened OS sandbox for untrusted code.
 
 ## Installation
 
