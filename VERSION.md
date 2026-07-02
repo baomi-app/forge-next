@@ -1,5 +1,17 @@
 # Forge Version History
 
+## v0.27.0-human-review-loop (2026-07-02)
+
+In this version, we introduced **Human Review Loop** so agents can create explicit approval checkpoints and record human decisions before continuing sensitive plan, diff, or commit work.
+
+### Key Changes
+- **Human Review Loop (`forge/human_review.py`)**: Added checkpoint creation for plan, diff, commit, and custom stages with changed files and optional diff preview.
+- **Human Review Tools (`forge/core_tools/human_review.py`)**: Added `request_human_review` for approval checkpoints and `record_human_review` for approval, rejection, or requested-change decisions.
+- **Blocked Tool Results (`forge/tool_result.py`, `forge/journal.py`)**: Added a `blocked` tool-result status so approval checkpoints are distinct from successful output and hard errors.
+- **Simulation Demo (`examples/demo_human_review.py`)**: Demonstrates a diff approval checkpoint, decision recording, and journal persistence.
+- **Unit Tests (`tests/test_human_review.py`, `tests/test_executor.py`, `tests/test_journal.py`)**: Covers checkpoint formatting, blocked result metadata, journal recording, decision recording, and tool registration.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the human-review boundary and the expanded core tool set.
+
 ## v0.26.0-structured-tool-result (2026-07-02)
 
 In this version, we introduced **Structured ToolResult** so tool execution outcomes carry explicit status, content, error type, and metadata instead of relying only on output strings.

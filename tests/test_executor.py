@@ -82,13 +82,13 @@ class TestToolExecutor(unittest.TestCase):
         @registry.register
         def structured() -> ToolResult:
             """Return a structured result."""
-            return ToolResult.error("blocked", error_type="policy_block")
+            return ToolResult.blocked("approval needed", error_type="human_review_required")
 
         result = registry.execute("structured", {})
 
-        self.assertEqual(result.status, "error")
-        self.assertEqual(result.error_type, "policy_block")
-        self.assertEqual(result.content, "blocked")
+        self.assertEqual(result.status, "blocked")
+        self.assertEqual(result.error_type, "human_review_required")
+        self.assertEqual(result.content, "approval needed")
 
     def test_records_json_argument_errors_without_executing_tool(self):
         registry = ToolRegistry()

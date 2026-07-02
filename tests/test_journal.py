@@ -55,6 +55,7 @@ class TestTaskJournal(unittest.TestCase):
         recorder.verifier_finished(False, "tests failed with long output")
         recorder.tool_finished("read_file", "abcdefghijklmnopqrstuvwxyz")
         recorder.tool_finished("policy_tool", ToolResult.error("blocked", error_type="policy_block"))
+        recorder.tool_finished("review_tool", ToolResult.blocked("approval needed", error_type="human_review_required"))
 
         self.assertEqual(journal.entries[0].kind, JournalKind.TASK_STARTED)
         self.assertEqual(journal.entries[1].kind, JournalKind.TOOL_RESULT)
@@ -62,6 +63,7 @@ class TestTaskJournal(unittest.TestCase):
         self.assertEqual(journal.entries[2].kind, JournalKind.VERIFICATION_BLOCKED)
         self.assertIn("TRUNCATED JOURNAL DETAIL", journal.entries[3].details)
         self.assertEqual(journal.entries[4].summary, "policy_tool failed")
+        self.assertEqual(journal.entries[5].summary, "review_tool blocked")
 
     def test_journal_tools_use_runtime_state(self):
         with tempfile.TemporaryDirectory() as workspace:

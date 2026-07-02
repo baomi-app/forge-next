@@ -30,6 +30,20 @@ class ToolResult:
         )
 
     @classmethod
+    def blocked(
+        cls,
+        content: Any,
+        error_type: str = "blocked",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "ToolResult":
+        return cls(
+            content=str(content),
+            status="blocked",
+            error_type=error_type,
+            metadata=metadata or {},
+        )
+
+    @classmethod
     def from_value(cls, value: Any) -> "ToolResult":
         if isinstance(value, cls):
             return value
@@ -38,6 +52,10 @@ class ToolResult:
     @property
     def is_error(self) -> bool:
         return self.status == "error"
+
+    @property
+    def is_blocked(self) -> bool:
+        return self.status == "blocked"
 
     def to_trace_dict(self) -> Dict[str, Any]:
         data = {

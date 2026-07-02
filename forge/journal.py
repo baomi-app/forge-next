@@ -108,7 +108,7 @@ class JournalRecorder:
 
     def tool_finished(self, tool_name: str, result) -> JournalEntry:
         content = getattr(result, "content", str(result))
-        status = "failed" if self._is_failure_result(result) else "completed"
+        status = self._tool_status(result)
         return self.journal.record(
             JournalKind.TOOL_RESULT,
             f"{tool_name} {status}",
@@ -144,3 +144,10 @@ class JournalRecorder:
         if match:
             return match.group(1) != "0"
         return False
+
+    def _tool_status(self, result) -> str:
+        if getattr(result, "status", None) == "blocked":
+            return "blocked"
+        if self._is_failure_result(result):
+            return "failed"
+        return "completed"
