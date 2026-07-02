@@ -4,19 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Set, Tuple
 
-from forge.core_tools.files import EXCLUDE_DIRS
-
-
-CODE_SUFFIXES = (".py", ".js", ".ts", ".tsx", ".go", ".rs")
-CONFIG_FILES = {
-    "AGENTS.md",
-    "Cargo.toml",
-    "go.mod",
-    "package.json",
-    "pyproject.toml",
-    "requirements.txt",
-}
-DOC_SUFFIXES = (".md", ".rst", ".txt")
+from forge.project import ProjectPolicy, ProjectProfiler, RepoProfile
 
 
 @dataclass
@@ -36,6 +24,7 @@ class RepoMap:
     """Project-level repository orientation for an agent."""
 
     root: str
+    profile: RepoProfile
     files: List[RepoFile]
     suggested_files: List[str]
     test_links: List[Tuple[str, str]]
@@ -49,6 +38,7 @@ class RepoMap:
         lines = [
             "Repository map:",
             f"Root: {self.root}",
+            f"Languages: {', '.join(self.profile.languages) if self.profile.languages else 'unknown'}",
             f"Files scanned: {len(self.files)}",
             "",
             "Entry points:",
@@ -101,12 +91,14 @@ class RepoMap:
 class RepoMapper:
     """Builds a lightweight project map of roles, entry points, symbols, imports, and tests."""
 
-    def __init__(self, workspace_dir: str):
+    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None):
         self.workspace_dir = os.path.abspath(workspace_dir)
+        self.policy = policy or ProjectPolicy()
 
     def map(self, directory: str = ".", task_goal: str = "") -> RepoMap:
         target_dir = self._target_dir(directory)
         files = self._collect_files(target_dir)
+        profile = ProjectProfiler(target_dir, policy=self.policy).profile()
         modules = self._python_modules(files)
         entries: List[RepoFile] = []
         parse_errors: List[str] = []
@@ -145,6 +137,7 @@ class RepoMapper:
 
         return RepoMap(
             root=os.path.relpath(target_dir, self.workspace_dir),
+            profile=profile,
             files=entries,
             suggested_files=self._suggested_files(entries, task_goal),
             test_links=self._test_links(entries, modules),
@@ -165,9 +158,11 @@ class RepoMapper:
     def _collect_files(self, target_dir: str) -> List[str]:
         files = []
         for root, dirs, filenames in os.walk(target_dir):
-            dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
+            dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
             for filename in sorted(filenames):
                 path = os.path.relpath(os.path.join(root, filename), target_dir)
+                if not self.policy.should_track_file(path):
+                    continue
                 files.append(path)
         return files
 
@@ -303,42 +298,13 @@ class RepoMapper:
         return ""
 
     def _role(self, path: str) -> str:
-        basename = os.path.basename(path)
-        if self._is_test(path):
-            return "test"
-        if path.startswith("examples/"):
-            return "example"
-        if basename in CONFIG_FILES:
-            return "config"
-        if path.endswith(DOC_SUFFIXES):
-            return "documentation"
-        if path.endswith(CODE_SUFFIXES):
-            return "runtime"
-        return "other"
+        return self.policy.role(path)
 
     def _is_test(self, path: str) -> bool:
-        basename = os.path.basename(path)
-        return (
-            path.startswith("tests/")
-            or "/tests/" in path
-            or (basename.startswith("test_") and basename.endswith(".py"))
-            or basename.endswith("_test.py")
-        )
+        return self.policy.is_test(path)
 
     def _language(self, path: str) -> str:
-        suffix = os.path.splitext(path)[1]
-        return {
-            ".go": "go",
-            ".js": "javascript",
-            ".json": "json",
-            ".md": "markdown",
-            ".py": "python",
-            ".rs": "rust",
-            ".toml": "toml",
-            ".ts": "typescript",
-            ".tsx": "typescript-react",
-            ".txt": "text",
-        }.get(suffix, "unknown")
+        return self.policy.language(path)
 
     def _tokens(self, text: str) -> Set[str]:
         return {token for token in re.findall(r"[a-zA-Z0-9_]+", text.lower()) if len(token) > 2}

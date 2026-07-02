@@ -1,10 +1,11 @@
 import difflib
-import fnmatch
 import base64
 import os
 import shutil
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+
+from forge.project import ProjectPolicy
 
 
 @dataclass
@@ -25,8 +26,9 @@ class ChangeSet:
         exclude_file_patterns: Optional[set] = None
     ):
         self.workspace_dir = os.path.abspath(workspace_dir)
-        self.exclude_dirs = exclude_dirs or {".git", "__pycache__", ".venv", ".agents", "node_modules", ".gemini"}
-        self.exclude_file_patterns = exclude_file_patterns or {"checkpoint.json", "*_checkpoint.json"}
+        self.policy = ProjectPolicy(exclude_dirs=exclude_dirs, exclude_file_patterns=exclude_file_patterns)
+        self.exclude_dirs = self.policy.exclude_dirs
+        self.exclude_file_patterns = self.policy.exclude_file_patterns
         self._baseline: Dict[str, bytes] = {}
         self.capture_baseline()
 
@@ -58,12 +60,9 @@ class ChangeSet:
             path: base64.b64decode(encoded)
             for path, encoded in baseline.items()
         }
-        exclude_dirs = data.get("exclude_dirs")
-        if isinstance(exclude_dirs, list):
-            self.exclude_dirs = set(exclude_dirs)
-        exclude_file_patterns = data.get("exclude_file_patterns")
-        if isinstance(exclude_file_patterns, list):
-            self.exclude_file_patterns = set(exclude_file_patterns)
+        self.policy = ProjectPolicy.from_dict(data)
+        self.exclude_dirs = self.policy.exclude_dirs
+        self.exclude_file_patterns = self.policy.exclude_file_patterns
 
     def changes(self) -> List[FileChange]:
         """Return files that differ from the captured baseline."""
@@ -162,11 +161,11 @@ class ChangeSet:
     def _iter_files(self) -> List[str]:
         files = []
         for root, dirs, filenames in os.walk(self.workspace_dir):
-            dirs[:] = sorted(d for d in dirs if d not in self.exclude_dirs)
+            dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
             for filename in sorted(filenames):
                 full_path = os.path.join(root, filename)
                 rel_path = os.path.relpath(full_path, self.workspace_dir)
-                if self._is_excluded_file(rel_path):
+                if not self.policy.should_track_file(rel_path):
                     continue
                 files.append(rel_path)
         return files
@@ -196,13 +195,6 @@ class ChangeSet:
         if content is None:
             return ""
         return content.decode("utf-8", errors="replace")
-
-    def _is_excluded_file(self, rel_path: str) -> bool:
-        basename = os.path.basename(rel_path)
-        return any(
-            fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(basename, pattern)
-            for pattern in self.exclude_file_patterns
-        )
 
     def _remove_empty_parents(self, directory: str):
         while os.path.commonpath([self.workspace_dir, directory]) == self.workspace_dir:

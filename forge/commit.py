@@ -1,10 +1,10 @@
-import fnmatch
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import List
 
 from forge.changes import ChangeSet, FileChange
+from forge.project import ProjectPolicy
 
 
 @dataclass
@@ -63,35 +63,8 @@ class CommitExecution:
 class CommitPlanner:
     """Plans atomic commit boundaries from task-scoped transaction changes."""
 
-    EXCLUDED_PATTERNS = {
-        ".DS_Store",
-        "*.pyc",
-        "*.pyo",
-        "*.log",
-        "*.tmp",
-        "*~",
-        ".vscode/*",
-        ".idea/*",
-        "__pycache__/*",
-        "mock_trace.json",
-        "verifier_trace.json",
-        "temp_*/*",
-    }
-    TEST_PATTERNS = {
-        "test_*.py",
-        "*_test.py",
-        "tests/*",
-        "*/tests/*",
-    }
-    DOC_PATTERNS = {
-        "README.md",
-        "VERSION.md",
-        "AGENTS.md",
-        "docs/*",
-    }
-    EXAMPLE_PATTERNS = {
-        "examples/*",
-    }
+    def __init__(self, policy: ProjectPolicy = None):
+        self.policy = policy or ProjectPolicy()
 
     def plan(self, change_set: ChangeSet, task_goal: str = "") -> CommitPlan:
         """Build a commit plan for the current task transaction."""
@@ -149,7 +122,7 @@ class CommitPlanner:
         return "\n".join(lines)
 
     def _file_decision(self, change: FileChange) -> CommitFileDecision:
-        if self._matches(change.path, self.EXCLUDED_PATTERNS):
+        if self.policy.is_generated_file(change.path):
             return CommitFileDecision(
                 path=change.path,
                 status=change.status,
@@ -257,33 +230,19 @@ class CommitPlanner:
         return summary[:72] if summary else "update project"
 
     def _category(self, path: str) -> str:
-        if self._is_test(path):
-            return "test"
-        if self._is_doc(path):
-            return "documentation"
-        if self._is_example(path):
-            return "example"
-        if self._is_code(path):
-            return "runtime code"
-        if path in {"pyproject.toml", "package.json", "go.mod", "Cargo.toml", "baomi.json"}:
-            return "project configuration"
-        return "other"
+        return self.policy.commit_category(path)
 
     def _is_code(self, path: str) -> bool:
-        return path.endswith((".py", ".js", ".ts", ".tsx", ".go", ".rs"))
+        return self.policy.is_code(path)
 
     def _is_test(self, path: str) -> bool:
-        return self._matches(path, self.TEST_PATTERNS)
+        return self.policy.is_test(path)
 
     def _is_doc(self, path: str) -> bool:
-        return self._matches(path, self.DOC_PATTERNS)
+        return self.policy.is_doc(path)
 
     def _is_example(self, path: str) -> bool:
-        return self._matches(path, self.EXAMPLE_PATTERNS)
-
-    def _matches(self, path: str, patterns: Iterable[str]) -> bool:
-        basename = os.path.basename(path)
-        return any(fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(basename, pattern) for pattern in patterns)
+        return self.policy.is_example(path)
 
 
 class GitStateInspector:

@@ -1,11 +1,9 @@
 import os
 from typing import Optional
 
+from forge.project import ProjectPolicy
 from forge.sandbox import BaseSandbox
 from forge.tool_registry import tool
-
-
-EXCLUDE_DIRS = {".git", "__pycache__", ".venv", ".agents", "node_modules", ".gemini"}
 
 
 @tool
@@ -21,11 +19,14 @@ def list_files(directory: str = ".", sandbox: Optional[BaseSandbox] = None) -> s
         else:
             target_dir = os.path.abspath(directory)
 
+        policy = ProjectPolicy()
         file_list = []
         for root, dirs, files in os.walk(target_dir):
-            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+            dirs[:] = [d for d in dirs if policy.should_descend_dir(d)]
             for file in files:
                 rel_path = os.path.relpath(os.path.join(root, file), target_dir)
+                if not policy.should_track_file(rel_path):
+                    continue
                 file_list.append(rel_path)
 
         if not file_list:
@@ -49,11 +50,15 @@ def search_code(query: str, directory: str = ".", sandbox: Optional[BaseSandbox]
         else:
             target_dir = os.path.abspath(directory)
 
+        policy = ProjectPolicy()
         matches = []
         for root, dirs, files in os.walk(target_dir):
-            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+            dirs[:] = [d for d in dirs if policy.should_descend_dir(d)]
             for file in files:
                 full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, target_dir)
+                if not policy.should_track_file(rel_path):
+                    continue
                 if file.endswith((".png", ".jpg", ".jpeg", ".gif", ".pyc", ".pyo", ".db", ".zip", ".tar.gz")):
                     continue
                 try:
@@ -66,7 +71,6 @@ def search_code(query: str, directory: str = ".", sandbox: Optional[BaseSandbox]
 
                     for line_num, line in enumerate(content.split("\n"), 1):
                         if query in line:
-                            rel_path = os.path.relpath(full_path, target_dir)
                             matches.append(f"{rel_path}:{line_num}: {line.strip()}")
                 except Exception:
                     pass

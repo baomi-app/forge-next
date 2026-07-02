@@ -1,9 +1,8 @@
-import fnmatch
-import os
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 from forge.changes import ChangeSet, FileChange
+from forge.project import ProjectPolicy
 
 
 @dataclass
@@ -18,33 +17,6 @@ class ReviewFinding:
 class ChangeReviewer:
     """Reviews task-scoped changes for delivery and commit readiness."""
 
-    GENERATED_PATTERNS = {
-        ".DS_Store",
-        "*.pyc",
-        "*.pyo",
-        "*.log",
-        "*.tmp",
-        "*~",
-        ".vscode/*",
-        ".idea/*",
-        "__pycache__/*",
-        "mock_trace.json",
-        "verifier_trace.json",
-        "temp_*/*",
-    }
-    TEST_PATTERNS = {
-        "test_*.py",
-        "*_test.py",
-        "tests/*",
-        "*/tests/*",
-    }
-    DOC_PATTERNS = {
-        "README.md",
-        "VERSION.md",
-        "AGENTS.md",
-        "docs/*",
-        "examples/*",
-    }
     USER_FACING_CODE = {
         "forge/tools.py",
         "forge/runner.py",
@@ -54,6 +26,9 @@ class ChangeReviewer:
         "forge/completion.py",
         "forge/executor.py",
     }
+
+    def __init__(self, policy: Optional[ProjectPolicy] = None):
+        self.policy = policy or ProjectPolicy()
 
     def review(self, change_set: ChangeSet, task_goal: str = "") -> str:
         """Return a human-readable review of the current transaction."""
@@ -98,7 +73,7 @@ class ChangeReviewer:
             return findings
 
         for change in changes:
-            if self._matches(change.path, self.GENERATED_PATTERNS):
+            if self.policy.is_generated_file(change.path):
                 findings.append(
                     ReviewFinding(
                         "BLOCK",
@@ -161,22 +136,18 @@ class ChangeReviewer:
             return f"feat: {summary[:72]}"
         if any(change.status == "deleted" for change in changes):
             return "fix: remove obsolete code"
-        if any(self._is_code(change.path) for change in changes):
+        if any(self.policy.is_code(change.path) for change in changes):
             return "feat: update agent behavior"
         return "docs: update project documentation"
 
     def _is_code(self, path: str) -> bool:
-        return path.endswith((".py", ".js", ".ts", ".tsx", ".go", ".rs"))
+        return self.policy.is_code(path)
 
     def _is_test(self, path: str) -> bool:
-        return self._matches(path, self.TEST_PATTERNS)
+        return self.policy.is_test(path)
 
     def _is_doc(self, path: str) -> bool:
-        return self._matches(path, self.DOC_PATTERNS)
-
-    def _matches(self, path: str, patterns: Iterable[str]) -> bool:
-        basename = os.path.basename(path)
-        return any(fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(basename, pattern) for pattern in patterns)
+        return self.policy.is_doc(path)
 
     def _format_finding(self, finding: ReviewFinding) -> str:
         prefix = f"- {finding.severity}: "

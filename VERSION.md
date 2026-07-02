@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.22.0-project-policy-profile (2026-07-02)
+
+In this version, we introduced **ProjectPolicy / RepoProfile** so repository rules and lightweight project traits are shared instead of being hard-coded across components.
+
+### Key Changes
+- **Project Policy and Profile (`forge/project.py`)**: Added shared file classification, generated-file detection, language hints, workspace exclusions, repository profiling, and checkpoint-compatible policy serialization.
+- **Low-Risk Component Migration (`forge/changes.py`, `forge/review.py`, `forge/commit.py`, `forge/edit_plan.py`, `forge/repo_map.py`)**: Migrated transaction tracking, review, commit planning, edit planning, and repo mapping to use the shared policy/profile layer.
+- **File Inspection Migration (`forge/core_tools/files.py`, `forge/core_tools/symbols.py`)**: Reused project policy exclusions for file listing, search, and symbol inspection.
+- **Unit Tests (`tests/test_project.py`)**: Covers classification, exclusions, repository profiling, and ChangeSet policy persistence.
+- **README Update (`README.md`)**: Documents the shared project policy/profile architecture.
+
 ## v0.21.0-repo-map-v2 (2026-07-02)
 
 In this version, we introduced **Repo Map v2** so agents can orient at the repository level before choosing files to inspect or edit.

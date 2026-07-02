@@ -5,6 +5,7 @@ from typing import Iterable, List, Set
 
 from forge.changes import FileChange
 from forge.focused import FocusedTestSelector
+from forge.project import ProjectPolicy
 
 
 @dataclass
@@ -33,13 +34,9 @@ class EditPlan:
 class EditPlanner:
     """Builds a scoped edit strategy before modifying files."""
 
-    EXCLUDE_DIRS = {".git", "__pycache__", ".venv", ".agents", "node_modules", ".gemini"}
-    CODE_SUFFIXES = (".py", ".js", ".ts", ".tsx", ".go", ".rs")
-    DOC_SUFFIXES = (".md", ".rst", ".txt")
-    CONFIG_FILES = {"pyproject.toml", "package.json", "go.mod", "Cargo.toml", "baomi.json"}
-
-    def __init__(self, workspace_dir: str):
+    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None):
         self.workspace_dir = os.path.abspath(workspace_dir)
+        self.policy = policy or ProjectPolicy()
 
     def plan(
         self,
@@ -139,9 +136,11 @@ class EditPlanner:
         if not os.path.exists(self.workspace_dir):
             return files
         for root, dirs, filenames in os.walk(self.workspace_dir):
-            dirs[:] = sorted(d for d in dirs if d not in self.EXCLUDE_DIRS)
+            dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
             for filename in sorted(filenames):
                 path = os.path.relpath(os.path.join(root, filename), self.workspace_dir)
+                if not self.policy.should_track_file(path):
+                    continue
                 files.append(path)
         return files
 
@@ -235,33 +234,19 @@ class EditPlanner:
         return category
 
     def _category(self, path: str) -> str:
-        if self._is_test(path):
-            return "test"
-        if self._is_doc(path):
-            return "documentation"
-        if self._is_code(path):
-            return "runtime code"
-        if os.path.basename(path) in self.CONFIG_FILES:
-            return "project configuration"
-        return "other"
+        return self.policy.commit_category(path)
 
     def _exists(self, path: str) -> bool:
         return os.path.exists(os.path.join(self.workspace_dir, path))
 
     def _is_code(self, path: str) -> bool:
-        return path.endswith(self.CODE_SUFFIXES)
+        return self.policy.is_code(path)
 
     def _is_test(self, path: str) -> bool:
-        basename = os.path.basename(path)
-        return (
-            path.startswith("tests/")
-            or "/tests/" in path
-            or (basename.startswith("test_") and basename.endswith(".py"))
-            or basename.endswith("_test.py")
-        )
+        return self.policy.is_test(path)
 
     def _is_doc(self, path: str) -> bool:
-        return path.endswith(self.DOC_SUFFIXES) or os.path.basename(path) in {"README.md", "AGENTS.md", "VERSION.md"}
+        return self.policy.is_doc(path)
 
     def _tokens(self, text: str) -> Set[str]:
         return {token for token in re.findall(r"[a-zA-Z0-9_]+", text.lower()) if len(token) > 2}

@@ -2,7 +2,7 @@ import ast
 import os
 from typing import Optional
 
-from forge.core_tools.files import EXCLUDE_DIRS
+from forge.project import ProjectPolicy
 from forge.sandbox import BaseSandbox
 from forge.tool_registry import tool
 
@@ -26,17 +26,20 @@ def inspect_code_symbols(directory: str = ".", sandbox: Optional[BaseSandbox] = 
         if not os.path.isdir(target_dir):
             return f"Error: '{directory}' is not a directory."
 
+        policy = ProjectPolicy()
         summaries = []
         parse_errors = []
 
         for root, dirs, files in os.walk(target_dir):
-            dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
+            dirs[:] = sorted(d for d in dirs if policy.should_descend_dir(d))
             for file in sorted(files):
                 if not file.endswith(".py"):
                     continue
 
                 full_path = os.path.join(root, file)
                 display_path = os.path.relpath(full_path, target_dir)
+                if not policy.should_track_file(display_path):
+                    continue
                 sandbox_path = os.path.relpath(full_path, workspace_root) if sandbox else display_path
                 try:
                     if sandbox:
