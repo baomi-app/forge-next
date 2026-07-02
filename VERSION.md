@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.18.0-commit-orchestration (2026-07-02)
+
+In this version, we introduced **Commit Orchestration** so agents can turn task-scoped changes into a clear staging plan, safely update the git index, create one atomic commit, and verify the committed file set.
+
+### Key Changes
+- **Commit Planner and Orchestrator (`forge/commit.py`)**: Added transaction-aware staging recommendations, excluded-file detection, git index inspection, safe staging, commit execution, committed-file verification, and remaining-workspace reporting.
+- **Commit Tools (`forge/core_tools/commit.py`)**: Added `plan_commit` for preflight planning and `commit_changes` for staging approved files and creating one git commit when the plan is safe.
+- **Simulation Demo (`examples/demo_commit_orchestration.py`)**: Demonstrates an agent updating code, tests, and docs, running verification, and creating a focused commit in a temporary git repository.
+- **Unit Tests (`tests/test_commit.py`)**: Covers planning states, git status inspection, safe commit execution, staged-file guardrails, transaction-backed tools, and tool registration.
+- **README Update (`README.md`)**: Documents commit orchestration and the expanded core tool set.
+
 ## v0.17.0-failure-triage (2026-07-01)
 
 In this version, we introduced **Failure Triage** so verifier failures include a classified cause, short evidence, and a repair-oriented next step for the self-correction loop.

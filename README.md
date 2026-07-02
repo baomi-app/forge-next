@@ -33,13 +33,15 @@ Forge keeps the runtime split into focused components:
 - `ChangeSet`: tracks task-scoped workspace changes and supports summaries, diffs, checkpoint persistence, and revert.
 - `ChangeReviewer`: reviews task-scoped changes for commit readiness, missing verification signals, local artifacts, and atomicity risks.
 - `FocusedTestSelector`: discovers focused verification commands from task-scoped changed files.
+- `CommitPlanner`: turns task-scoped changes into staging recommendations, commit risks, and a suggested atomic commit message.
+- `CommitOrchestrator`: inspects git state, stages planned files, creates an atomic commit, and verifies the committed file set.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **12 Core Coding Tools**:
+- **14 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -52,6 +54,8 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `revert_changes`: Revert all file changes made since the current task transaction baseline.
   - `review_changes`: Review the current transaction for delivery and commit-readiness risks.
   - `suggest_tests`: Suggest focused verification commands for the current transaction.
+  - `plan_commit`: Plan staging and commit boundaries for the current transaction.
+  - `commit_changes`: Stage planned transaction files and create one git commit when the plan is safe.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -62,6 +66,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Change Transactions**: Captures a workspace baseline for each run, reports task-scoped changes, and can revert the current transaction.
 - **Change Review Gate**: Reviews task-scoped changes for local artifacts, missing test evidence, missing documentation signals, and commit atomicity before finishing.
 - **Focused Test Selection**: Suggests targeted verification commands from changed files before broader final checks.
+- **Commit Orchestration**: Plans commit boundaries, inspects the git index, stages only approved transaction files, creates an atomic commit, and reports remaining workspace state.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -140,6 +145,12 @@ python examples/demo_review.py
 The focused test demo shows an agent using changed files to choose a targeted unit test before finishing:
 ```bash
 python examples/demo_focused_tests.py
+```
+
+### Run Commit Orchestration Demo
+The commit orchestration demo shows an agent planning, verifying, and creating a focused commit in a temporary git repository:
+```bash
+python examples/demo_commit_orchestration.py
 ```
 
 ### Run Real Agent
