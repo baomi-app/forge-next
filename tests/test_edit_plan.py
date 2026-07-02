@@ -4,13 +4,13 @@ import unittest
 
 from forge.changes import ChangeSet
 from forge.edit_plan import EditPlanner
+from forge.tool_capabilities import ToolCapabilities
 from forge.tools import plan_edits, registry
 
 
-class FakeRunner:
+class FakeSession:
     def __init__(self, change_set):
         self.change_set = change_set
-        self.workspace_dir = change_set.workspace_dir
 
 
 class TestEditPlanner(unittest.TestCase):
@@ -61,16 +61,16 @@ class TestEditPlanner(unittest.TestCase):
         self.assertEqual(plan.planned_edits[0].action, "create")
         self.assertIn("Some planned files do not exist yet", plan.risks[0])
 
-    def test_plan_edits_tool_uses_runner_workspace(self):
+    def test_plan_edits_tool_uses_runtime_workspace(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
 
             output = plan_edits(
                 task_goal="update app value",
                 target_files="app.py,test_app.py",
-                runner=runner,
+                runtime=runtime,
             )
 
         self.assertIn("Edit strategy plan", output)

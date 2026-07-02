@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from forge.project import ProjectPolicy
 from forge.sandbox import BaseSandbox
@@ -7,19 +7,24 @@ from forge.tool_registry import tool
 
 
 @tool
-def list_files(directory: str = ".", sandbox: Optional[BaseSandbox] = None) -> str:
+def list_files(
+    directory: str = ".",
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """List all files recursively in the specified directory, excluding build artifacts and version control.
 
     Args:
         directory (str): The root directory to list files from. Defaults to '.'.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             target_dir = sandbox._validate_path(directory)
         else:
             target_dir = os.path.abspath(directory)
 
-        policy = ProjectPolicy()
+        policy = runtime.project_policy() if runtime else ProjectPolicy()
         file_list = []
         for root, dirs, files in os.walk(target_dir):
             dirs[:] = [d for d in dirs if policy.should_descend_dir(d)]
@@ -37,7 +42,12 @@ def list_files(directory: str = ".", sandbox: Optional[BaseSandbox] = None) -> s
 
 
 @tool
-def search_code(query: str, directory: str = ".", sandbox: Optional[BaseSandbox] = None) -> str:
+def search_code(
+    query: str,
+    directory: str = ".",
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Search for a literal query string in all codebase files.
 
     Args:
@@ -45,12 +55,13 @@ def search_code(query: str, directory: str = ".", sandbox: Optional[BaseSandbox]
         directory (str): The directory to search in. Defaults to '.'.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             target_dir = sandbox._validate_path(directory)
         else:
             target_dir = os.path.abspath(directory)
 
-        policy = ProjectPolicy()
+        policy = runtime.project_policy() if runtime else ProjectPolicy()
         matches = []
         for root, dirs, files in os.walk(target_dir):
             dirs[:] = [d for d in dirs if policy.should_descend_dir(d)]
@@ -83,7 +94,12 @@ def search_code(query: str, directory: str = ".", sandbox: Optional[BaseSandbox]
 
 
 @tool
-def read_file(filepath: str, line_numbers: bool = True, sandbox: Optional[BaseSandbox] = None) -> str:
+def read_file(
+    filepath: str,
+    line_numbers: bool = True,
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Read and return the complete contents of a file, optionally prefixed with line numbers.
 
     Args:
@@ -91,6 +107,7 @@ def read_file(filepath: str, line_numbers: bool = True, sandbox: Optional[BaseSa
         line_numbers (bool): Prefix each line with its 1-indexed line number. Defaults to True.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             content = sandbox.read_file(filepath)
         else:
@@ -111,7 +128,13 @@ def read_file(filepath: str, line_numbers: bool = True, sandbox: Optional[BaseSa
 
 
 @tool
-def apply_patch(filepath: str, target: str, replacement: str, sandbox: Optional[BaseSandbox] = None) -> str:
+def apply_patch(
+    filepath: str,
+    target: str,
+    replacement: str,
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Modify a file by replacing a single unique target block of text with a replacement block.
 
     Args:
@@ -120,6 +143,7 @@ def apply_patch(filepath: str, target: str, replacement: str, sandbox: Optional[
         replacement (str): The new text block to insert in place of the target block.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             content = sandbox.read_file(filepath)
         else:
@@ -148,9 +172,17 @@ def apply_patch(filepath: str, target: str, replacement: str, sandbox: Optional[
 
 
 @tool
-def edit_file_block(filepath: str, start_line: int, end_line: int, replacement: str, sandbox: Optional[BaseSandbox] = None) -> str:
+def edit_file_block(
+    filepath: str,
+    start_line: int,
+    end_line: int,
+    replacement: str,
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Edits a specific block of text in a file by line numbers (1-indexed, inclusive)."""
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             content = sandbox.read_file(filepath)
         else:

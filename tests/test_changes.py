@@ -3,12 +3,8 @@ import tempfile
 import unittest
 
 from forge.changes import ChangeSet
+from forge.tool_capabilities import ToolCapabilities
 from forge.tools import change_summary, revert_changes, review_changes, registry
-
-
-class FakeRunner:
-    def __init__(self, change_set):
-        self.change_set = change_set
 
 
 class FakeSession:
@@ -112,30 +108,31 @@ class TestChangeSet(unittest.TestCase):
 
         self.assertEqual(changes, [])
 
-    def test_change_tools_use_runner_transaction_state(self):
+    def test_change_tools_use_runtime_transaction_state(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
             self._write_file(workspace, "app.py", "VALUE = 2\n")
 
-            summary = change_summary(include_diff=False, runner=runner)
-            result = revert_changes(runner=runner)
+            summary = change_summary(include_diff=False, runtime=runtime)
+            result = revert_changes(runtime=runtime)
 
         self.assertIn("modified: app.py", summary)
         self.assertIn("Reverted 1 file change(s)", result)
 
-    def test_change_tools_use_session_transaction_state(self):
+    def test_change_tools_use_registry_runtime_state(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             session = FakeSession(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=session)
             self._write_file(workspace, "app.py", "VALUE = 2\n")
 
             summary = registry.execute(
                 "change_summary",
                 {"include_diff": False},
-                session=session,
+                runtime=runtime,
             )
-            result = registry.execute("revert_changes", {}, session=session)
+            result = registry.execute("revert_changes", {}, runtime=runtime)
 
         self.assertIn("modified: app.py", summary)
         self.assertIn("Reverted 1 file change(s)", result)
@@ -143,9 +140,9 @@ class TestChangeSet(unittest.TestCase):
     def test_review_changes_blocks_empty_transactions(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
 
-            review = review_changes(runner=runner)
+            review = review_changes(runtime=runtime)
 
         self.assertIn("Status: BLOCK", review)
         self.assertIn("No transaction changes were found", review)
@@ -154,9 +151,9 @@ class TestChangeSet(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             change_set = ChangeSet(workspace)
             self._write_file(workspace, ".vscode/settings.json", "{}\n")
-            runner = FakeRunner(change_set)
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(change_set))
 
-            review = review_changes(runner=runner)
+            review = review_changes(runtime=runtime)
 
         self.assertIn("Status: BLOCK", review)
         self.assertIn(".vscode/settings.json", review)
@@ -164,10 +161,10 @@ class TestChangeSet(unittest.TestCase):
     def test_review_changes_warns_when_code_lacks_test_changes(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
             self._write_file(workspace, "app.py", "VALUE = 2\n")
 
-            review = review_changes(task_goal="update app value", runner=runner)
+            review = review_changes(task_goal="update app value", runtime=runtime)
 
         self.assertIn("Status: WARN", review)
         self.assertIn("Code changed but no test files changed", review)
@@ -177,11 +174,11 @@ class TestChangeSet(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
 
-            review = review_changes(runner=runner)
+            review = review_changes(runtime=runtime)
 
         self.assertIn("Status: PASS", review)
         self.assertIn("atomic candidate", review)

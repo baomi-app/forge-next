@@ -5,14 +5,10 @@ from forge.completion import CompletionGate
 from forge.context import Context
 from forge.executor import ToolExecutor
 from forge.journal import JournalKind, JournalRecorder, TaskJournal
+from forge.tool_capabilities import ToolCapabilities
 from forge.session import AgentSession
 from forge.tools import ToolRegistry, journal_note, read_journal, registry
 from forge.trace import ExecutionTrace, StepTrace
-
-
-class FakeRunner:
-    def __init__(self, session):
-        self.session = session
 
 
 class FakeVerifier:
@@ -64,19 +60,23 @@ class TestTaskJournal(unittest.TestCase):
         self.assertEqual(journal.entries[2].kind, JournalKind.VERIFICATION_BLOCKED)
         self.assertIn("TRUNCATED JOURNAL DETAIL", journal.entries[3].details)
 
-    def test_journal_tools_use_session_state(self):
+    def test_journal_tools_use_runtime_state(self):
         with tempfile.TemporaryDirectory() as workspace:
             session = AgentSession(workspace, "You are a coding agent.")
             session.start("Update app")
-            runner = FakeRunner(session)
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=session,
+                journal_recorder=session.journal_recorder,
+            )
 
             result = journal_note(
                 kind="decision",
                 summary="Patch app.py",
                 details="Small localized change.",
-                runner=runner,
+                runtime=runtime,
             )
-            output = read_journal(runner=runner)
+            output = read_journal(runtime=runtime)
 
         self.assertIn("Recorded journal entry #2 [decision]", result)
         self.assertIn("Patch app.py", output)

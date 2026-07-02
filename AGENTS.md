@@ -23,7 +23,7 @@ Forge Next is a coding agent for real software engineering work. Keep changes ea
 - Put subagent creation, shared runtime resources, and subagent checkpoint naming in `SubagentManager`.
 - Put no-tool completion decisions in `CompletionGate`; verifier pass/block handling should not be reimplemented in `AgentRunner`.
 - Put workspace edit baselines, summaries, diffs, and reverts in `ChangeSet`.
-- Keep tools thin. When a tool needs runtime state, prefer injecting a narrow runtime object such as `session` or a manager instead of reaching across the whole runner.
+- Keep tools thin. When a tool needs runtime state, prefer injecting `ToolCapabilities`; do not pass the whole runner into core tools.
 
 ## Verification
 

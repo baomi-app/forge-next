@@ -4,10 +4,11 @@ import unittest
 
 from forge.changes import ChangeSet, FileChange
 from forge.focused import FocusedTestSelector
+from forge.tool_capabilities import ToolCapabilities
 from forge.tools import registry, suggest_tests
 
 
-class FakeRunner:
+class FakeSession:
     def __init__(self, change_set):
         self.change_set = change_set
 
@@ -61,9 +62,9 @@ class TestFocusedTestSelector(unittest.TestCase):
             self._write_file(workspace, "test_app.py", "")
             change_set = ChangeSet(workspace)
             self._write_file(workspace, "app.py", "VALUE = 2\n")
-            runner = FakeRunner(change_set)
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(change_set))
 
-            output = suggest_tests(runner=runner)
+            output = suggest_tests(runtime=runtime)
 
         self.assertIn("Focused verification suggestions", output)
         self.assertIn("python -m unittest test_app", output)

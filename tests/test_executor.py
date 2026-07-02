@@ -10,6 +10,10 @@ class FakeSession:
     value = "session-value"
 
 
+class FakeRuntime:
+    value = "runtime-value"
+
+
 class FakeSubagentManager:
     def __init__(self):
         self.calls = []
@@ -79,6 +83,33 @@ class TestToolExecutor(unittest.TestCase):
 
         self.assertEqual(context.messages[-1]["content"], "session-value")
         definition = registry.tool_definitions[0]["function"]["parameters"]
+        self.assertNotIn("session", definition["properties"])
+
+    def test_injects_runtime_in_preference_to_legacy_dependencies(self):
+        registry = ToolRegistry()
+
+        @registry.register
+        def read_runtime(runtime=None, session=None) -> str:
+            """Read injected runtime state."""
+            if runtime:
+                return runtime.value
+            return session.value
+
+        context = Context()
+        step = StepTrace(step_idx=1)
+        executor = ToolExecutor(
+            tool_registry=registry,
+            session=FakeSession(),
+            runtime=FakeRuntime(),
+        )
+
+        executor.execute_tool_calls([
+            self._tool_call("call_1", "read_runtime", "{}")
+        ], context, step)
+
+        self.assertEqual(context.messages[-1]["content"], "runtime-value")
+        definition = registry.tool_definitions[0]["function"]["parameters"]
+        self.assertNotIn("runtime", definition["properties"])
         self.assertNotIn("session", definition["properties"])
 
     def test_injects_subagent_manager_into_subagent_tool(self):

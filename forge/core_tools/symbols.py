@@ -1,6 +1,6 @@
 import ast
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from forge.project import ProjectPolicy
 from forge.sandbox import BaseSandbox
@@ -8,13 +8,18 @@ from forge.tool_registry import tool
 
 
 @tool
-def inspect_code_symbols(directory: str = ".", sandbox: Optional[BaseSandbox] = None) -> str:
+def inspect_code_symbols(
+    directory: str = ".",
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Inspect Python files and summarize imports, classes, methods, and functions with line numbers.
 
     Args:
         directory (str): The directory to inspect. Defaults to '.'.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             target_dir = sandbox._validate_path(directory)
             workspace_root = sandbox.workspace_dir
@@ -26,7 +31,7 @@ def inspect_code_symbols(directory: str = ".", sandbox: Optional[BaseSandbox] = 
         if not os.path.isdir(target_dir):
             return f"Error: '{directory}' is not a directory."
 
-        policy = ProjectPolicy()
+        policy = runtime.project_policy() if runtime else ProjectPolicy()
         summaries = []
         parse_errors = []
 

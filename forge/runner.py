@@ -11,6 +11,7 @@ from forge.verifier import Verifier
 from forge.sandbox import LocalRestrictedSandbox
 from forge.session import AgentSession
 from forge.subagents import SubagentManager
+from forge.tool_capabilities import ToolCapabilities
 
 DEFAULT_SYSTEM_PROMPT_TEMPLATE = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
 You have access to these coding tools: {tool_names}.
@@ -76,6 +77,7 @@ class AgentRunner:
         self.model_lock = model_lock or RLock()
         self.tool_lock = tool_lock or RLock()
         self.subagent_manager = SubagentManager(self)
+        self.tool_capabilities = self._build_tool_capabilities()
         self.tool_executor = ToolExecutor(
             tool_registry=self.tool_registry,
             sandbox=self.sandbox,
@@ -83,6 +85,16 @@ class AgentRunner:
             session=self.session,
             subagent_manager=self.subagent_manager,
             tool_lock=self.tool_lock,
+            journal_recorder=self.session.journal_recorder,
+            runtime=self.tool_capabilities,
+        )
+
+    def _build_tool_capabilities(self) -> ToolCapabilities:
+        return ToolCapabilities(
+            workspace_dir=self.workspace_dir,
+            sandbox=self.sandbox,
+            session=self.session,
+            subagent_manager=self.subagent_manager,
             journal_recorder=self.session.journal_recorder,
         )
 
@@ -138,6 +150,7 @@ class AgentRunner:
                 self.verifier.test_command = self.session.test_command
                 self.change_set = self.session.change_set
                 self.completion_gate.journal_recorder = self.session.journal_recorder
+                self.tool_capabilities = self._build_tool_capabilities()
                 restored = True
 
                 print(f"[Runner] Resuming agent loop from Iteration {start_iteration + 1}...")
@@ -149,12 +162,14 @@ class AgentRunner:
         if not restored:
             self.session.start(task)
             self.completion_gate.journal_recorder = self.session.journal_recorder
+            self.tool_capabilities = self._build_tool_capabilities()
             print(f"\n[Runner] Starting fresh Agent Loop for task: '{task}'")
 
         context = self.session.context
         trace = self.session.trace
         self.tool_executor.session = self.session
         self.tool_executor.journal_recorder = self.session.journal_recorder
+        self.tool_executor.runtime = self.tool_capabilities
         self.tool_executor.runner = self
         self.tool_executor.sandbox = self.sandbox
         self.tool_executor.subagent_manager = self.subagent_manager

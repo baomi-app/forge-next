@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from forge.repo_map import RepoMapper
 from forge.sandbox import BaseSandbox
@@ -11,6 +11,7 @@ def inspect_repo_map(
     directory: str = ".",
     task_goal: str = "",
     max_files: int = 40,
+    runtime: Optional[Any] = None,
     sandbox: Optional[BaseSandbox] = None,
 ) -> str:
     """Build a project-level map of file roles, entry points, symbols, imports, and tests.
@@ -21,6 +22,7 @@ def inspect_repo_map(
         max_files (int): Maximum file-role entries to render. Defaults to 40.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             target_dir = sandbox._validate_path(directory)
             workspace_dir = sandbox.workspace_dir
@@ -29,7 +31,8 @@ def inspect_repo_map(
             workspace_dir = os.path.abspath(directory)
             rel_directory = "."
 
-        return RepoMapper(workspace_dir).format_map(
+        policy = runtime.project_policy() if runtime else None
+        return RepoMapper(workspace_dir, policy=policy).format_map(
             directory=rel_directory,
             task_goal=task_goal,
             max_files=max_files,

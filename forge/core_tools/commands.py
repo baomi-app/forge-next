@@ -1,20 +1,25 @@
 import os
 import shlex
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 
 from forge.sandbox import BaseSandbox
 from forge.tool_registry import tool
 
 
 @tool
-def run_command(command: str, sandbox: Optional[BaseSandbox] = None) -> str:
+def run_command(
+    command: str,
+    runtime: Optional[Any] = None,
+    sandbox: Optional[BaseSandbox] = None,
+) -> str:
     """Run a shell command in the local workspace and return stdout and stderr.
 
     Args:
         command (str): The shell command to run.
     """
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             return sandbox.execute_command(command, timeout_seconds=10)
 
@@ -43,9 +48,10 @@ def run_command(command: str, sandbox: Optional[BaseSandbox] = None) -> str:
 
 
 @tool
-def git_diff(sandbox: Optional[BaseSandbox] = None) -> str:
+def git_diff(runtime: Optional[Any] = None, sandbox: Optional[BaseSandbox] = None) -> str:
     """Show the git diff of the current workspace to inspect modifications."""
     try:
+        sandbox = sandbox or (runtime.sandbox if runtime else None)
         if sandbox:
             return sandbox.execute_command("git diff")
 

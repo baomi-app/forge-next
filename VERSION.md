@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.24.0-tool-runtime-injection (2026-07-02)
+
+In this version, we introduced **ToolCapabilities / Capability Injection** so core tools receive narrow per-run capabilities instead of reaching across the full runner.
+
+### Key Changes
+- **Tool Capabilities (`forge/tool_capabilities.py`)**: Added a small runtime object for workspace, sandbox, session-backed change state, subagent manager, journal recorder, and project policy access.
+- **Registry and Executor (`forge/tool_registry.py`, `forge/executor.py`, `forge/runner.py`)**: Added runtime-first dependency injection while keeping legacy injection available for external or transition tools.
+- **Core Tool Migration (`forge/core_tools/`)**: Migrated built-in tools to consume `runtime` for transaction state, journal state, project policy, sandbox access, and subagent dispatch.
+- **Unit Tests (`tests/test_executor.py`, `tests/test_tools.py`, transaction tool tests)**: Covers runtime preference over legacy dependencies, hidden runtime schema parameters, and runtime-backed tool behavior.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the runtime capability boundary and tool injection rule.
+
 ## v0.23.0-policy-verification-chain (2026-07-02)
 
 In this version, we migrated the verification chain onto **ProjectPolicy / RepoProfile** so focused test selection and project verification share the same project rules as the rest of the agent.

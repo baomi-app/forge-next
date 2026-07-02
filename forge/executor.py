@@ -21,6 +21,7 @@ class ToolExecutor:
         subagent_manager: Optional[Any] = None,
         tool_lock: Optional[RLock] = None,
         journal_recorder: Optional[Any] = None,
+        runtime: Optional[Any] = None,
     ):
         self.tool_registry = tool_registry
         self.sandbox = sandbox
@@ -29,6 +30,7 @@ class ToolExecutor:
         self.subagent_manager = subagent_manager
         self.tool_lock = tool_lock or RLock()
         self.journal_recorder = journal_recorder
+        self.runtime = runtime
 
     def execute_tool_calls(
         self,
@@ -80,6 +82,7 @@ class ToolExecutor:
                     self.runner,
                     self.session,
                     self.subagent_manager,
+                    self.runtime,
                 )
                 tool_results_futures[future] = (tc_id, func_name)
 
@@ -110,6 +113,7 @@ class ToolExecutor:
                     runner=self.runner,
                     session=self.session,
                     subagent_manager=self.subagent_manager,
+                    runtime=self.runtime,
                 )
             self._record_tool_result(context, step, tc_id, func_name, result)
 

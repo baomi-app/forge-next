@@ -5,10 +5,11 @@ import unittest
 
 from forge.changes import ChangeSet
 from forge.commit import CommitOrchestrator, CommitPlanner, GitStateInspector
+from forge.tool_capabilities import ToolCapabilities
 from forge.tools import commit_changes, plan_commit, registry
 
 
-class FakeRunner:
+class FakeSession:
     def __init__(self, change_set):
         self.change_set = change_set
 
@@ -82,12 +83,12 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
             self._write_file(workspace, "README.md", "old\n")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
             self._write_file(workspace, "README.md", "new\n")
-            output = plan_commit(task_goal="update app value", runner=runner)
+            output = plan_commit(task_goal="update app value", runtime=runtime)
 
         self.assertIn("Commit orchestration plan", output)
         self.assertIn("Status: READY", output)
@@ -185,12 +186,12 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "README.md", "old\n")
             self._git(workspace, "add", ".")
             self._git(workspace, "commit", "-m", "init")
-            runner = FakeRunner(ChangeSet(workspace))
+            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
             self._write_file(workspace, "README.md", "new\n")
-            output = commit_changes(task_goal="update app value", runner=runner)
+            output = commit_changes(task_goal="update app value", runtime=runtime)
 
         self.assertIn("Commit orchestration result", output)
         self.assertIn("Status: COMMITTED", output)

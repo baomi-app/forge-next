@@ -69,6 +69,14 @@ def helper():
         tool_names = [definition["function"]["name"] for definition in registry.tool_definitions]
         self.assertIn("inspect_code_symbols", tool_names)
 
+    def test_runtime_dependencies_are_hidden_from_core_tool_schemas(self):
+        hidden = {"runtime", "runner", "session", "subagent_manager", "sandbox"}
+        for definition in registry.tool_definitions:
+            name = definition["function"]["name"]
+            properties = definition["function"]["parameters"].get("properties", {})
+            exposed = hidden.intersection(properties)
+            self.assertEqual(exposed, set(), f"{name} exposed hidden runtime dependencies")
+
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)
         os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -25,7 +25,7 @@ class ToolRegistry:
         required = []
 
         for param_name, param in sig.parameters.items():
-            if param_name in ("self", "cls", "sandbox", "runner", "session", "subagent_manager"):
+            if param_name in ("self", "cls", "runtime", "sandbox", "runner", "session", "subagent_manager"):
                 continue
 
             param_type = "string"
@@ -95,6 +95,7 @@ class ToolRegistry:
         runner: Optional[Any] = None,
         session: Optional[Any] = None,
         subagent_manager: Optional[Any] = None,
+        runtime: Optional[Any] = None,
     ) -> str:
         """Executes a registered tool, dynamically injecting hidden runtime dependencies."""
         if name not in self.tools:
@@ -102,14 +103,18 @@ class ToolRegistry:
         try:
             try:
                 sig = inspect.signature(self.tools[name])
-                if "sandbox" in sig.parameters:
-                    args["sandbox"] = sandbox
-                if "runner" in sig.parameters:
-                    args["runner"] = runner
-                if "session" in sig.parameters:
-                    args["session"] = session
-                if "subagent_manager" in sig.parameters:
-                    args["subagent_manager"] = subagent_manager
+                has_runtime = "runtime" in sig.parameters and runtime is not None
+                if has_runtime:
+                    args["runtime"] = runtime
+                else:
+                    if "sandbox" in sig.parameters:
+                        args["sandbox"] = sandbox
+                    if "runner" in sig.parameters:
+                        args["runner"] = runner
+                    if "session" in sig.parameters:
+                        args["session"] = session
+                    if "subagent_manager" in sig.parameters:
+                        args["subagent_manager"] = subagent_manager
             except (ValueError, TypeError):
                 pass
 
