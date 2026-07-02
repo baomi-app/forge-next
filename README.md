@@ -38,16 +38,18 @@ Forge keeps the runtime split into focused components:
 - `EditPlanner`: creates a pre-edit strategy with files to inspect, planned edits, risks, and verification commands.
 - `TaskJournal`: stores structured task events such as plans, decisions, failures, verification results, and next steps across checkpoints.
 - `JournalRecorder`: converts runtime events into task journal entries so executors and completion checks do not own journal writing policy.
+- `RepoMapper`: builds a lightweight project map of file roles, entry points, symbols, local imports, and test relationships.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **17 Core Coding Tools**:
+- **18 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
+  - `inspect_repo_map`: Build a lightweight project map of file roles, entry points, symbols, imports, and test links.
   - `read_file`: Retrieve file content with optional line numbers.
   - `apply_patch`: Search and replace string to modify files.
   - `edit_file_block`: Replace a 1-indexed inclusive line range.
@@ -75,6 +77,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Commit Orchestration**: Plans commit boundaries, inspects the git index, stages only approved transaction files, creates an atomic commit, and reports remaining workspace state.
 - **Patch Strategy / Edit Planner**: Builds an inspectable edit plan before patching so the agent can review scope, order, risks, and verification up front.
 - **Persistent Task Journal**: Records plans, decisions, tool outcomes, verification results, and next steps so long tasks can resume with structured continuity.
+- **Repo Map v2**: Gives the agent a lightweight repository orientation across file roles, entry points, symbols, imports, suggested inspection files, and test relationships.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -171,6 +174,12 @@ python examples/demo_edit_planner.py
 The task journal demo shows an agent recording plan, decision, verification, and tool history during a task:
 ```bash
 python examples/demo_task_journal.py
+```
+
+### Run Repo Map Demo
+The repo map demo shows an agent using file roles, entry points, and test links before choosing what to edit:
+```bash
+python examples/demo_repo_map.py
 ```
 
 ### Run Real Agent

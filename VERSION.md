@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.21.0-repo-map-v2 (2026-07-02)
+
+In this version, we introduced **Repo Map v2** so agents can orient at the repository level before choosing files to inspect or edit.
+
+### Key Changes
+- **Repo Mapper (`forge/repo_map.py`)**: Added lightweight mapping for file roles, Python symbols, local imports, entry points, suggested inspection files, parse errors, and test-to-runtime relationships.
+- **Repository Map Tool (`forge/core_tools/repo_map.py`)**: Added `inspect_repo_map` for agent-facing repository orientation with optional task-goal ranking.
+- **Simulation Demo (`examples/demo_repo_map.py`)**: Demonstrates using the repository map to find a runtime file and linked test before editing.
+- **Unit Tests (`tests/test_repo_map.py`)**: Covers role mapping, symbol extraction, entrypoint detection, local import links, test links, task-goal suggestions, sandbox subdirectory behavior, and registration.
+- **README Update (`README.md`)**: Documents Repo Map v2 and the expanded core tool set.
+
 ## v0.20.0-task-journal (2026-07-02)
 
 In this version, we introduced **Persistent Task Journal** so long-running tasks can preserve structured plans, decisions, tool outcomes, verification results, and next steps across checkpoints.
