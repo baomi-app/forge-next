@@ -151,6 +151,17 @@ class TestProjectAwareVerifier(unittest.TestCase):
         self.assertIn("kind: syntax_error", report)
         self.assertIn("Fix the reported file and line", report)
 
+    def test_syntax_verification_uses_project_policy_exclusions(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "def ok():\n    return True\n")
+            self._write_file(workspace, "run_checkpoint.json", "not python\n")
+            self._write_file(workspace, "__pycache__/broken.py", "def broken()\n    return 1\n")
+
+            passed, report = Verifier(workspace_dir=workspace).verify()
+
+        self.assertTrue(passed)
+        self.assertIn("[VERIFIER PASSED]", report)
+
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)
         os.makedirs(os.path.dirname(path), exist_ok=True)

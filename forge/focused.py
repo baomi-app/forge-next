@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Set
 
 from forge.changes import FileChange
+from forge.project import ProjectPolicy
 from forge.verifier import VerificationCheck
 
 
@@ -17,8 +18,9 @@ class FocusedTestPlan:
 class FocusedTestSelector:
     """Selects focused verification commands from task-scoped file changes."""
 
-    def __init__(self, workspace_dir: str):
+    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None):
         self.workspace_dir = os.path.abspath(workspace_dir)
+        self.policy = policy or ProjectPolicy()
 
     def select(self, changes: Iterable[FileChange]) -> FocusedTestPlan:
         """Return focused verification checks and explanatory notes."""
@@ -89,11 +91,11 @@ class FocusedTestSelector:
         return "\n".join(lines)
 
     def _checks_for_path(self, path: str) -> List[VerificationCheck]:
-        if path.startswith("tests/") and path.endswith(".py") and os.path.basename(path) != "__init__.py":
+        if self.policy.is_test(path) and path.endswith(".py") and os.path.basename(path) != "__init__.py":
             module = path[:-3].replace("/", ".")
             return [self._unittest_module(module, f"changed test file {path}")]
 
-        if path.startswith("examples/demo_") and path.endswith(".py"):
+        if self.policy.is_example(path) and os.path.basename(path).startswith("demo_") and path.endswith(".py"):
             return [
                 VerificationCheck(
                     name=f"demo {os.path.basename(path)}",
@@ -139,4 +141,4 @@ class FocusedTestSelector:
         )
 
     def _is_code(self, path: str) -> bool:
-        return path.endswith((".py", ".js", ".ts", ".tsx", ".go", ".rs"))
+        return self.policy.is_code(path)

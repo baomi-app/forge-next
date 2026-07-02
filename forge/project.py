@@ -75,7 +75,7 @@ class ProjectPolicy:
     }
     project_language_markers = {
         "python": ("pyproject.toml", "requirements.txt", "setup.py"),
-        "node": ("package.json",),
+        "node": ("package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"),
         "go": ("go.mod",),
         "rust": ("Cargo.toml",),
     }

@@ -80,7 +80,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Patch Strategy / Edit Planner**: Builds an inspectable edit plan before patching so the agent can review scope, order, risks, and verification up front.
 - **Persistent Task Journal**: Records plans, decisions, tool outcomes, verification results, and next steps so long tasks can resume with structured continuity.
 - **Repo Map v2**: Gives the agent a lightweight repository orientation across file roles, entry points, symbols, imports, suggested inspection files, and test relationships.
-- **Project Policy & Profile**: Keeps repository rules consistent across maps, reviews, edit planning, commit planning, and file inspection.
+- **Project Policy & Profile**: Keeps repository rules consistent across maps, reviews, edit planning, commit planning, verification, and file inspection.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.

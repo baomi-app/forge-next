@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 from typing import Tuple, List, Optional, Dict, Any
 
+from forge.project import ProjectPolicy, ProjectProfiler
+
 
 @dataclass
 class VerificationCheck:
@@ -58,15 +60,15 @@ class Verifier:
         workspace_dir: str = ".",
         test_command: Optional[str] = None,
         auto_discover: bool = True,
-        timeout_seconds: int = 30
+        timeout_seconds: int = 30,
+        policy: Optional[ProjectPolicy] = None,
     ):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.test_command = test_command
         self.auto_discover = auto_discover
         self.timeout_seconds = timeout_seconds
         self.python_executable = shlex.quote(sys.executable)
-        # Re-use the exclude directory logic from tools
-        self.exclude_dirs = {".git", "__pycache__", ".venv", ".agents", "node_modules", ".gemini"}
+        self.policy = policy or ProjectPolicy()
 
     def verify_syntax(self) -> Tuple[bool, List[str]]:
         """Scans all Python files recursively in the workspace to verify syntax compiles correctly.
@@ -76,27 +78,28 @@ class Verifier:
         """
         errors = []
         for root, dirs, files in os.walk(self.workspace_dir):
-            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
+            dirs[:] = [d for d in dirs if self.policy.should_descend_dir(d)]
             
             for file in files:
                 if not file.endswith(".py"):
                     continue
                     
                 filepath = os.path.join(root, file)
+                rel_path = os.path.relpath(filepath, self.workspace_dir)
+                if not self.policy.should_track_file(rel_path):
+                    continue
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         source = f.read()
                     # compile() is a quick and robust way to check for syntax/indentation errors
                     compile(source, filepath, 'exec')
                 except SyntaxError as se:
-                    rel_path = os.path.relpath(filepath, self.workspace_dir)
                     errors.append(
                         f"Syntax Error in {rel_path} at line {se.lineno}, col {se.offset}:\n"
                         f"  {se.text.strip() if se.text else ''}\n"
                         f"  Error message: {se.msg}"
                     )
                 except Exception as e:
-                    rel_path = os.path.relpath(filepath, self.workspace_dir)
                     errors.append(f"Unexpected error parsing {rel_path}: {str(e)}")
                     
         is_passed = len(errors) == 0
@@ -301,19 +304,7 @@ class Verifier:
 
     def _detect_languages(self) -> List[str]:
         """Detect likely project languages from known files and extensions."""
-        languages = []
-        root_files = set(os.listdir(self.workspace_dir)) if os.path.exists(self.workspace_dir) else set()
-
-        if root_files & {"pyproject.toml", "setup.py", "requirements.txt"} or self._has_file_with_suffix(".py"):
-            languages.append("python")
-        if root_files & {"package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"}:
-            languages.append("node")
-        if "go.mod" in root_files:
-            languages.append("go")
-        if "Cargo.toml" in root_files:
-            languages.append("rust")
-
-        return languages
+        return ProjectProfiler(self.workspace_dir, policy=self.policy).profile().languages
 
     def _discover_python_checks(self, notes: List[str]) -> List[VerificationCheck]:
         """Find Python test commands that are likely to work in the current environment."""
@@ -522,18 +513,23 @@ class Verifier:
 
     def _has_file_with_suffix(self, suffix: str) -> bool:
         for root, dirs, files in os.walk(self.workspace_dir):
-            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
-            if any(file.endswith(suffix) for file in files):
+            dirs[:] = [d for d in dirs if self.policy.should_descend_dir(d)]
+            if any(
+                file.endswith(suffix)
+                and self.policy.should_track_file(os.path.relpath(os.path.join(root, file), self.workspace_dir))
+                for file in files
+            ):
                 return True
         return False
 
     def _has_python_tests(self) -> bool:
         for root, dirs, files in os.walk(self.workspace_dir):
-            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
+            dirs[:] = [d for d in dirs if self.policy.should_descend_dir(d)]
             for file in files:
-                if file.startswith("test_") and file.endswith(".py"):
-                    return True
-                if file.endswith("_test.py"):
+                path = os.path.relpath(os.path.join(root, file), self.workspace_dir)
+                if not self.policy.should_track_file(path):
+                    continue
+                if self.policy.is_test(path) and file != "__init__.py" and file.endswith(".py"):
                     return True
         return False
 

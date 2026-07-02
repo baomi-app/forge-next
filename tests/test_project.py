@@ -30,6 +30,7 @@ class TestProjectPolicy(unittest.TestCase):
     def test_profiler_detects_languages_files_and_entrypoints(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "pyproject.toml", "[project]\nname = 'demo'\n")
+            self._write_file(workspace, "yarn.lock", "")
             self._write_file(workspace, "app.py", "def value():\n    return 1\n")
             self._write_file(workspace, "tests/test_app.py", "")
             self._write_file(workspace, "README.md", "# Demo\n")
@@ -37,7 +38,7 @@ class TestProjectPolicy(unittest.TestCase):
 
             profile = ProjectProfiler(workspace).profile()
 
-        self.assertEqual(profile.languages, ["python"])
+        self.assertEqual(profile.languages, ["node", "python"])
         self.assertIn("pyproject.toml", profile.config_files)
         self.assertIn("app.py", profile.source_files)
         self.assertIn("tests/test_app.py", profile.test_files)

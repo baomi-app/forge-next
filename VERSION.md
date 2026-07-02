@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.23.0-policy-verification-chain (2026-07-02)
+
+In this version, we migrated the verification chain onto **ProjectPolicy / RepoProfile** so focused test selection and project verification share the same project rules as the rest of the agent.
+
+### Key Changes
+- **Focused Test Selection (`forge/focused.py`)**: Reused project policy for code/test/example classification while preserving existing focused command behavior.
+- **Verifier (`forge/verifier.py`)**: Reused project policy and profiler for syntax exclusions, language detection, and Python test discovery.
+- **Policy Markers (`forge/project.py`)**: Extended node language detection to include common lockfiles used by verifier discovery.
+- **Unit Tests (`tests/test_verifier.py`, `tests/test_project.py`)**: Covers policy-backed syntax exclusions and lockfile language detection.
+- **README Update (`README.md`)**: Documents that verification now uses the shared project policy/profile layer.
+
 ## v0.22.0-project-policy-profile (2026-07-02)
 
 In this version, we introduced **ProjectPolicy / RepoProfile** so repository rules and lightweight project traits are shared instead of being hard-coded across components.
