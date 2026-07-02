@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from forge.context import Context
 from forge.sandbox import BaseSandbox
 from forge.tools import ToolRegistry
+from forge.tool_result import ToolResult
 from forge.trace import StepTrace
 
 
@@ -90,7 +91,14 @@ class ToolExecutor:
                 try:
                     result = future.result()
                 except Exception as exc:
-                    result = f"Error executing tool '{func_name}' dynamically: {str(exc)}"
+                    result = ToolResult.error(
+                        f"Error executing tool '{func_name}' dynamically: {str(exc)}",
+                        error_type="executor_exception",
+                        metadata={
+                            "tool_name": func_name,
+                            "exception_type": type(exc).__name__,
+                        },
+                    )
                 self._record_tool_result(context, step, tc_id, func_name, result)
 
     def _execute_standard_calls(
@@ -134,7 +142,17 @@ class ToolExecutor:
         except json.JSONDecodeError as je:
             error_output = f"Error: Failed to parse tool arguments as JSON: {str(je)}"
             print(f"[Runner] {error_output}")
-            self._record_tool_result(context, step, tc_id, func_name, error_output)
+            self._record_tool_result(
+                context,
+                step,
+                tc_id,
+                func_name,
+                ToolResult.error(
+                    error_output,
+                    error_type="invalid_json",
+                    metadata={"exception_type": type(je).__name__},
+                ),
+            )
             return None
 
         return tc_id, func_name, args
@@ -145,14 +163,17 @@ class ToolExecutor:
         step: StepTrace,
         tc_id: str,
         func_name: str,
-        result: str,
+        result: ToolResult,
     ) -> None:
-        print(f"[Tool Output Snippet]: {result[:120]}..." if len(result) > 120 else f"[Tool Output]: {result}")
-        context.add_tool_result(tc_id, func_name, result)
-        step.tool_results.append({
+        result = ToolResult.from_value(result)
+        content = result.content
+        print(f"[Tool Output Snippet]: {content[:120]}..." if len(content) > 120 else f"[Tool Output]: {content}")
+        context.add_tool_result(tc_id, func_name, content)
+        trace_result = {
             "tool_call_id": tc_id,
             "name": func_name,
-            "content": result,
-        })
+            **result.to_trace_dict(),
+        }
+        step.tool_results.append(trace_result)
         if self.journal_recorder:
             self.journal_recorder.tool_finished(func_name, result)

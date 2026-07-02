@@ -47,6 +47,8 @@ class CompletionGate:
         step.tool_results.append({
             "tool_call_id": "verifier_check",
             "name": "auto_verifier",
+            "status": "error",
+            "error_type": "verification_failed",
             "content": report,
         })
         step.stop_timer()

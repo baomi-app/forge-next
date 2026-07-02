@@ -3,6 +3,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional
 
 from forge.sandbox import BaseSandbox
+from forge.tool_result import ToolResult
 
 
 class ToolRegistry:
@@ -96,10 +97,14 @@ class ToolRegistry:
         session: Optional[Any] = None,
         subagent_manager: Optional[Any] = None,
         runtime: Optional[Any] = None,
-    ) -> str:
+    ) -> ToolResult:
         """Executes a registered tool, dynamically injecting hidden runtime dependencies."""
         if name not in self.tools:
-            return f"Error: Tool '{name}' is not registered."
+            return ToolResult.error(
+                f"Error: Tool '{name}' is not registered.",
+                error_type="unknown_tool",
+                metadata={"tool_name": name},
+            )
         try:
             try:
                 sig = inspect.signature(self.tools[name])
@@ -119,9 +124,16 @@ class ToolRegistry:
                 pass
 
             result = self.tools[name](**args)
-            return str(result)
+            return ToolResult.from_value(result)
         except Exception as e:
-            return f"Error executing tool '{name}': {str(e)}"
+            return ToolResult.error(
+                f"Error executing tool '{name}': {str(e)}",
+                error_type="tool_exception",
+                metadata={
+                    "tool_name": name,
+                    "exception_type": type(e).__name__,
+                },
+            )
 
 
 registry = ToolRegistry()

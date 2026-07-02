@@ -106,12 +106,13 @@ class JournalRecorder:
     def note(self, kind: str, summary: str, details: str = "") -> JournalEntry:
         return self.journal.record(kind or JournalKind.NOTE, summary, details)
 
-    def tool_finished(self, tool_name: str, result: str) -> JournalEntry:
+    def tool_finished(self, tool_name: str, result) -> JournalEntry:
+        content = getattr(result, "content", str(result))
         status = "failed" if self._is_failure_result(result) else "completed"
         return self.journal.record(
             JournalKind.TOOL_RESULT,
             f"{tool_name} {status}",
-            self._clip(result),
+            self._clip(content),
         )
 
     def verifier_finished(self, passed: bool, report: str) -> JournalEntry:
@@ -132,7 +133,9 @@ class JournalRecorder:
             return text
         return text[:self.max_detail_chars] + "\n... [TRUNCATED JOURNAL DETAIL] ..."
 
-    def _is_failure_result(self, result: str) -> bool:
+    def _is_failure_result(self, result) -> bool:
+        if getattr(result, "status", None) == "error":
+            return True
         text = str(result).strip().lower()
         if text.startswith(("error", "[security error]", "[timeout error]")):
             return True

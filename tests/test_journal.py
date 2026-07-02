@@ -7,6 +7,7 @@ from forge.executor import ToolExecutor
 from forge.journal import JournalKind, JournalRecorder, TaskJournal
 from forge.tool_capabilities import ToolCapabilities
 from forge.session import AgentSession
+from forge.tool_result import ToolResult
 from forge.tools import ToolRegistry, journal_note, read_journal, registry
 from forge.trace import ExecutionTrace, StepTrace
 
@@ -53,12 +54,14 @@ class TestTaskJournal(unittest.TestCase):
         recorder.tool_finished("run_command", "Command exited with status code 1.")
         recorder.verifier_finished(False, "tests failed with long output")
         recorder.tool_finished("read_file", "abcdefghijklmnopqrstuvwxyz")
+        recorder.tool_finished("policy_tool", ToolResult.error("blocked", error_type="policy_block"))
 
         self.assertEqual(journal.entries[0].kind, JournalKind.TASK_STARTED)
         self.assertEqual(journal.entries[1].kind, JournalKind.TOOL_RESULT)
         self.assertEqual(journal.entries[1].summary, "run_command failed")
         self.assertEqual(journal.entries[2].kind, JournalKind.VERIFICATION_BLOCKED)
         self.assertIn("TRUNCATED JOURNAL DETAIL", journal.entries[3].details)
+        self.assertEqual(journal.entries[4].summary, "policy_tool failed")
 
     def test_journal_tools_use_runtime_state(self):
         with tempfile.TemporaryDirectory() as workspace:

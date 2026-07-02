@@ -49,6 +49,8 @@ class TestCompletionGate(unittest.TestCase):
         self.assertEqual(context.messages[1]["content"], "tests failed")
         self.assertEqual(step.tool_results[0]["tool_call_id"], "verifier_check")
         self.assertEqual(step.tool_results[0]["name"], "auto_verifier")
+        self.assertEqual(step.tool_results[0]["status"], "error")
+        self.assertEqual(step.tool_results[0]["error_type"], "verification_failed")
         self.assertEqual(step.tool_results[0]["content"], "tests failed")
 
 

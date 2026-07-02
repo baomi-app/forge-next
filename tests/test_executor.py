@@ -2,6 +2,7 @@ import unittest
 
 from forge.context import Context
 from forge.executor import ToolExecutor
+from forge.tool_result import ToolResult
 from forge.tools import ToolRegistry
 from forge.trace import StepTrace
 
@@ -43,7 +44,51 @@ class TestToolExecutor(unittest.TestCase):
         self.assertEqual(context.messages[-1]["role"], "tool")
         self.assertEqual(context.messages[-1]["content"], "hello Forge")
         self.assertEqual(step.tool_results[0]["name"], "greet")
+        self.assertEqual(step.tool_results[0]["status"], "success")
         self.assertEqual(step.tool_results[0]["content"], "hello Forge")
+
+    def test_registry_returns_structured_tool_result(self):
+        registry = ToolRegistry()
+
+        @registry.register
+        def greet(name: str) -> str:
+            """Return a greeting."""
+            return f"hello {name}"
+
+        result = registry.execute("greet", {"name": "Forge"})
+
+        self.assertIsInstance(result, ToolResult)
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.content, "hello Forge")
+
+    def test_registry_wraps_tool_exceptions_as_error_results(self):
+        registry = ToolRegistry()
+
+        @registry.register
+        def explode() -> str:
+            """Raise an error."""
+            raise RuntimeError("boom")
+
+        result = registry.execute("explode", {})
+
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.error_type, "tool_exception")
+        self.assertIn("boom", result.content)
+        self.assertEqual(result.metadata["exception_type"], "RuntimeError")
+
+    def test_registry_preserves_explicit_tool_result(self):
+        registry = ToolRegistry()
+
+        @registry.register
+        def structured() -> ToolResult:
+            """Return a structured result."""
+            return ToolResult.error("blocked", error_type="policy_block")
+
+        result = registry.execute("structured", {})
+
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.error_type, "policy_block")
+        self.assertEqual(result.content, "blocked")
 
     def test_records_json_argument_errors_without_executing_tool(self):
         registry = ToolRegistry()
@@ -64,6 +109,8 @@ class TestToolExecutor(unittest.TestCase):
         self.assertIn("Failed to parse tool arguments as JSON", context.messages[-1]["content"])
         self.assertEqual(step.tool_results[0]["tool_call_id"], "call_1")
         self.assertEqual(step.tool_results[0]["name"], "greet")
+        self.assertEqual(step.tool_results[0]["status"], "error")
+        self.assertEqual(step.tool_results[0]["error_type"], "invalid_json")
 
     def test_injects_session_into_tool_execution(self):
         registry = ToolRegistry()

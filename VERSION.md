@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.26.0-structured-tool-result (2026-07-02)
+
+In this version, we introduced **Structured ToolResult** so tool execution outcomes carry explicit status, content, error type, and metadata instead of relying only on output strings.
+
+### Key Changes
+- **Tool Result Model (`forge/tool_result.py`)**: Added `ToolResult` with success/error constructors, trace serialization, and text compatibility for direct callers.
+- **Registry and Executor (`forge/tool_registry.py`, `forge/executor.py`)**: Standardized normal returns, tool exceptions, missing tools, JSON argument errors, and executor exceptions as structured results while preserving plain text content for model messages.
+- **Trace and Journal Integration (`forge/completion.py`, `forge/journal.py`)**: Records status/error fields in trace tool results and lets journal recording use structured status before falling back to text heuristics.
+- **Unit Tests (`tests/test_executor.py`, `tests/test_completion.py`, `tests/test_journal.py`)**: Covers structured success results, explicit tool-result passthrough, tool exceptions, JSON parse failures, verifier trace status, and journal failure recording.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the structured result boundary and the rule against string-only status inference.
+
 ## v0.25.0-run-runtime-extraction (2026-07-02)
 
 In this version, we introduced **AgentLoopRunner / AgentRunner Loop Extraction** so per-iteration model/tool/completion flow lives outside the top-level runner.

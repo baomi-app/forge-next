@@ -28,6 +28,7 @@ Forge keeps the runtime split into focused components:
 - `AgentSession`: owns per-run state such as context, trace, change transaction state, current iteration, and checkpoint serialization.
 - `AgentLoopRunner`: advances prepared agent sessions through model turns, tool handoff, completion checks, and checkpoint-save timing.
 - `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
+- `ToolResult`: standardizes tool execution status, model-facing content, error type, and metadata before results enter traces or journals.
 - `ToolCapabilities`: carries narrow per-run capabilities for tools, such as workspace, sandbox, session-backed transaction state, subagent manager, journal recorder, and project policy.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
@@ -85,6 +86,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Project Policy & Profile**: Keeps repository rules consistent across maps, reviews, edit planning, commit planning, verification, and file inspection.
 - **Tool Capabilities Injection**: Injects narrow runtime capabilities into core tools without exposing runner, session, sandbox, or manager parameters to model schemas.
 - **Agent Loop Runner Extraction**: Keeps iteration advancement outside `AgentRunner`, giving model turns, tool handoff, completion checks, and checkpoint-save timing a dedicated component.
+- **Structured Tool Results**: Records tool status, content, error type, and metadata in traces and journals while preserving plain text tool messages for the model.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
