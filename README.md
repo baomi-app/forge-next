@@ -33,6 +33,7 @@ Forge keeps the runtime split into focused components:
 - `ToolCapabilities`: carries narrow per-run capabilities for tools, such as workspace, sandbox, session-backed transaction state, subagent manager, journal recorder, and project policy.
 - `HumanReviewLoop`: creates approval checkpoints and records human review decisions for plan, diff, commit, or custom review stages.
 - `WorktreeManager`: plans, creates, inspects, and removes git branch worktrees for isolated implementation attempts.
+- `CodebaseMemory`: persists durable project conventions, decisions, architecture notes, testing guidance, and workflow knowledge across tasks.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
 - `Verifier`: runs syntax checks, configured test commands, project-discovered checks, and failure triage.
@@ -53,7 +54,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **24 Core Coding Tools**:
+- **26 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -78,6 +79,8 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `plan_worktree_branch`: Plan a branch worktree for isolated agent work.
   - `create_worktree_branch`: Create a new git branch in a separate worktree.
   - `remove_worktree`: Remove a git worktree after isolated work is no longer needed.
+  - `remember_codebase`: Record durable project memory such as conventions, decisions, architecture, or testing notes.
+  - `read_codebase_memory`: Read durable project memory, optionally filtered by a query.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -99,6 +102,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Human Review Loop**: Lets the agent request approval checkpoints around plans, diffs, and commits, then record the human decision in the task journal.
 - **Checkpoint Store**: Keeps checkpoint file persistence, restore, and cleanup outside the runner loop and session serialization model.
 - **Worktree / Branch Orchestration**: Lets the agent plan and create isolated branch worktrees, inspect existing worktrees, and remove them after experiments.
+- **Codebase Memory**: Persists curated project conventions, architecture decisions, testing notes, and workflow knowledge across tasks.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -207,6 +211,12 @@ python examples/demo_human_review.py
 The worktree demo shows an agent planning, creating, inspecting, and removing an isolated branch worktree in a temporary git repository:
 ```bash
 python examples/demo_worktree.py
+```
+
+### Run Codebase Memory Demo
+The codebase memory demo shows durable project conventions and architecture notes being recorded and queried:
+```bash
+python examples/demo_codebase_memory.py
 ```
 
 ### Run Repo Map Demo

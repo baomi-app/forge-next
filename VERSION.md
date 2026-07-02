@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.30.0-codebase-memory (2026-07-02)
+
+In this version, we introduced **Codebase Memory** so agents can preserve curated project conventions, decisions, architecture notes, testing guidance, and workflow knowledge across tasks.
+
+### Key Changes
+- **Codebase Memory (`forge/memory.py`)**: Added durable `.forge/memory.json` storage with structured entries, kinds, tags, search, formatting, and validation.
+- **Memory Tools (`forge/core_tools/memory.py`)**: Added `remember_codebase` for recording durable project knowledge and `read_codebase_memory` for queryable recall.
+- **Simulation Demo (`examples/demo_codebase_memory.py`)**: Demonstrates recording conventions and architecture notes, then querying memory by topic.
+- **Unit Tests (`tests/test_memory.py`)**: Covers persistence, search filtering, runtime-backed tools, memory file creation, and tool registration.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the codebase memory boundary and expanded core tool set.
+
 ## v0.29.0-worktree-branch-orchestration (2026-07-02)
 
 In this version, we introduced **Worktree / Branch Orchestration** so agents can plan, create, inspect, and remove isolated git branch worktrees for experimental or complex implementation paths.
