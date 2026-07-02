@@ -32,6 +32,7 @@ Forge keeps the runtime split into focused components:
 - `ToolResult`: standardizes tool execution status, model-facing content, error type, and metadata before results enter traces or journals.
 - `ToolCapabilities`: carries narrow per-run capabilities for tools, such as workspace, sandbox, session-backed transaction state, subagent manager, journal recorder, and project policy.
 - `HumanReviewLoop`: creates approval checkpoints and records human review decisions for plan, diff, commit, or custom review stages.
+- `WorktreeManager`: plans, creates, inspects, and removes git branch worktrees for isolated implementation attempts.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
 - `Verifier`: runs syntax checks, configured test commands, project-discovered checks, and failure triage.
@@ -52,7 +53,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **20 Core Coding Tools**:
+- **24 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -73,6 +74,10 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `read_journal`: Read recent task journal entries.
   - `request_human_review`: Create a human approval checkpoint for plan, diff, commit, or custom review.
   - `record_human_review`: Record a human review approval, rejection, or requested change.
+  - `inspect_worktrees`: Inspect current git branch, dirty files, and registered worktrees.
+  - `plan_worktree_branch`: Plan a branch worktree for isolated agent work.
+  - `create_worktree_branch`: Create a new git branch in a separate worktree.
+  - `remove_worktree`: Remove a git worktree after isolated work is no longer needed.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -93,6 +98,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Structured Tool Results**: Records tool status, content, error type, and metadata in traces and journals while preserving plain text tool messages for the model.
 - **Human Review Loop**: Lets the agent request approval checkpoints around plans, diffs, and commits, then record the human decision in the task journal.
 - **Checkpoint Store**: Keeps checkpoint file persistence, restore, and cleanup outside the runner loop and session serialization model.
+- **Worktree / Branch Orchestration**: Lets the agent plan and create isolated branch worktrees, inspect existing worktrees, and remove them after experiments.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -195,6 +201,12 @@ python examples/demo_task_journal.py
 The human review demo shows an agent creating an approval checkpoint, recording the decision, and preserving both in the task journal:
 ```bash
 python examples/demo_human_review.py
+```
+
+### Run Worktree Demo
+The worktree demo shows an agent planning, creating, inspecting, and removing an isolated branch worktree in a temporary git repository:
+```bash
+python examples/demo_worktree.py
 ```
 
 ### Run Repo Map Demo

@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.29.0-worktree-branch-orchestration (2026-07-02)
+
+In this version, we introduced **Worktree / Branch Orchestration** so agents can plan, create, inspect, and remove isolated git branch worktrees for experimental or complex implementation paths.
+
+### Key Changes
+- **Worktree Manager (`forge/worktree.py`)**: Added repository inspection, dirty-file reporting, worktree parsing, branch-name validation, workspace-sibling path planning, worktree creation, and removal.
+- **Worktree Tools (`forge/core_tools/worktree.py`)**: Added `inspect_worktrees`, `plan_worktree_branch`, `create_worktree_branch`, and `remove_worktree`.
+- **Simulation Demo (`examples/demo_worktree.py`)**: Demonstrates planning, creating, inspecting, and removing an isolated worktree in a temporary git repository.
+- **Unit Tests (`tests/test_worktree.py`)**: Covers planning, create/remove flows, invalid branch guards, runtime-backed tools, and tool registration.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the worktree boundary and expanded core tool set.
+
 ## v0.28.0-checkpoint-store (2026-07-02)
 
 In this version, we introduced **CheckpointStore** so checkpoint persistence, restore, path resolution, existence checks, and cleanup live outside the runner loop and session serialization model.
