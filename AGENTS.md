@@ -26,6 +26,7 @@ Forge Next is a coding agent for real software engineering work. Keep changes ea
 - Put human approval checkpoints in `HumanReviewLoop` and the human-review tools; do not bury approval requirements inside unrelated tool output.
 - Put branch/worktree isolation behavior in `WorktreeManager`; keep git worktree path planning, creation, and removal out of commit orchestration.
 - Put durable project conventions, decisions, and architecture notes in `CodebaseMemory`; keep it distinct from per-task journal entries.
+- Put issue, PR, CI, and review-comment intake in `IssuePrWorkflow`; keep external collaboration planning separate from edit execution.
 - Put subagent creation, shared runtime resources, and subagent checkpoint naming in `SubagentManager`.
 - Put no-tool completion decisions in `CompletionGate`; verifier pass/block handling should not be reimplemented in `AgentRunner`.
 - Put workspace edit baselines, summaries, diffs, and reverts in `ChangeSet`.

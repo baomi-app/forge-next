@@ -34,6 +34,7 @@ Forge keeps the runtime split into focused components:
 - `HumanReviewLoop`: creates approval checkpoints and records human review decisions for plan, diff, commit, or custom review stages.
 - `WorktreeManager`: plans, creates, inspects, and removes git branch worktrees for isolated implementation attempts.
 - `CodebaseMemory`: persists durable project conventions, decisions, architecture notes, testing guidance, and workflow knowledge across tasks.
+- `IssuePrWorkflow`: turns issue, PR, CI, and review-comment context into an agent workflow plan and durable feedback records.
 - `SubagentManager`: creates specialized child agents while sharing parent runtime resources such as model, workspace, sandbox, registry, and locks.
 - `CompletionGate`: decides whether a no-tool model response may finish the task, using the verifier and feeding failures back into context.
 - `Verifier`: runs syntax checks, configured test commands, project-discovered checks, and failure triage.
@@ -54,7 +55,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **26 Core Coding Tools**:
+- **28 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -81,6 +82,8 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `remove_worktree`: Remove a git worktree after isolated work is no longer needed.
   - `remember_codebase`: Record durable project memory such as conventions, decisions, architecture, or testing notes.
   - `read_codebase_memory`: Read durable project memory, optionally filtered by a query.
+  - `plan_issue_pr_workflow`: Turn issue, PR, CI, or review context into an agent implementation workflow.
+  - `record_pr_feedback`: Record PR, review, or CI feedback in the task journal and optional codebase memory.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -103,6 +106,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Checkpoint Store**: Keeps checkpoint file persistence, restore, and cleanup outside the runner loop and session serialization model.
 - **Worktree / Branch Orchestration**: Lets the agent plan and create isolated branch worktrees, inspect existing worktrees, and remove them after experiments.
 - **Codebase Memory**: Persists curated project conventions, architecture decisions, testing notes, and workflow knowledge across tasks.
+- **Issue / PR Workflow Integration**: Converts issue, PR, CI, and review-comment context into implementation workflow plans and durable feedback records.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -217,6 +221,12 @@ python examples/demo_worktree.py
 The codebase memory demo shows durable project conventions and architecture notes being recorded and queried:
 ```bash
 python examples/demo_codebase_memory.py
+```
+
+### Run Issue / PR Workflow Demo
+The issue/PR workflow demo shows issue acceptance criteria becoming an agent work plan, then review feedback being recorded into journal and memory:
+```bash
+python examples/demo_issue_pr_workflow.py
 ```
 
 ### Run Repo Map Demo

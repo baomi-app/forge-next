@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.31.0-issue-pr-workflow-integration (2026-07-02)
+
+In this version, we introduced **Issue / PR Workflow Integration** so agents can turn issue, PR, CI, and review-comment context into implementation plans and durable feedback records.
+
+### Key Changes
+- **Issue / PR Workflow (`forge/issue_pr.py`)**: Added source normalization, acceptance-criteria extraction, review/CI feedback parsing, local branch/dirty-state context, and recommended agent flow formatting.
+- **Workflow Tools (`forge/core_tools/issue_pr.py`)**: Added `plan_issue_pr_workflow` for implementation planning and `record_pr_feedback` for journal and optional codebase-memory feedback capture.
+- **Simulation Demo (`examples/demo_issue_pr_workflow.py`)**: Demonstrates issue intake, acceptance criteria planning, review feedback recording, and memory recall.
+- **Unit Tests (`tests/test_issue_pr.py`)**: Covers workflow planning, feedback persistence, runtime-backed tools, and tool registration.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the external collaboration workflow boundary and expanded core tool set.
+
 ## v0.30.0-codebase-memory (2026-07-02)
 
 In this version, we introduced **Codebase Memory** so agents can preserve curated project conventions, decisions, architecture notes, testing guidance, and workflow knowledge across tasks.
