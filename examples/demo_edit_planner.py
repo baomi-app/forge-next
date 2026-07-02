@@ -1,0 +1,148 @@
+import json
+import os
+import shutil
+import sys
+from typing import Any, Dict, List, Optional, Tuple
+
+# Ensure project root is in python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from forge.model import BaseModel
+from forge.runner import AgentRunner
+
+
+class EditPlannerMockModel(BaseModel):
+    """Demonstrates planning file edits before patching."""
+
+    def __init__(self):
+        self.step_idx = 0
+
+    def generate(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
+        self.step_idx += 1
+
+        if self.step_idx == 1:
+            print("[MockModel] Thinking: I should plan the edit before touching files.")
+            return (
+                "I will plan the file edits before patching.",
+                [{"id": "edit_plan_1", "type": "function", "function": {
+                    "name": "plan_edits",
+                    "arguments": json.dumps({
+                        "task_goal": "update app value",
+                        "target_files": "app.py,test_app.py",
+                    }),
+                }}],
+            )
+
+        if self.step_idx == 2:
+            print("[MockModel] Thinking: The plan says to inspect app.py and test_app.py first.")
+            return (
+                "I will inspect the planned files before editing.",
+                [
+                    {"id": "edit_plan_2a", "type": "function", "function": {
+                        "name": "read_file",
+                        "arguments": json.dumps({"filepath": "app.py"}),
+                    }},
+                    {"id": "edit_plan_2b", "type": "function", "function": {
+                        "name": "read_file",
+                        "arguments": json.dumps({"filepath": "test_app.py"}),
+                    }},
+                ],
+            )
+
+        if self.step_idx == 3:
+            print("[MockModel] Thinking: I can now apply the planned edits.")
+            return (
+                "I will apply the planned implementation and test edits.",
+                [
+                    {"id": "edit_plan_3a", "type": "function", "function": {
+                        "name": "apply_patch",
+                        "arguments": json.dumps({
+                            "filepath": "app.py",
+                            "target": "def value():\n    return 1",
+                            "replacement": "def value():\n    return 2",
+                        }),
+                    }},
+                    {"id": "edit_plan_3b", "type": "function", "function": {
+                        "name": "apply_patch",
+                        "arguments": json.dumps({
+                            "filepath": "test_app.py",
+                            "target": "self.assertEqual(value(), 1)",
+                            "replacement": "self.assertEqual(value(), 2)",
+                        }),
+                    }},
+                ],
+            )
+
+        if self.step_idx == 4:
+            print("[MockModel] Thinking: I should run the planned verification.")
+            return (
+                "I will run the planned focused unit test.",
+                [{"id": "edit_plan_4", "type": "function", "function": {
+                    "name": "run_command",
+                    "arguments": json.dumps({"command": "python -m unittest test_app"}),
+                }}],
+            )
+
+        return ("The edits were planned, applied, and verified.", None)
+
+
+def setup_environment(workspace: str):
+    if os.path.exists(workspace):
+        shutil.rmtree(workspace)
+    os.makedirs(workspace)
+
+    print("[Demo Setup] Creating app.py...")
+    with open(os.path.join(workspace, "app.py"), "w", encoding="utf-8") as f:
+        f.write("""def value():
+    return 1
+""")
+
+    print("[Demo Setup] Creating test_app.py...")
+    with open(os.path.join(workspace, "test_app.py"), "w", encoding="utf-8") as f:
+        f.write("""import unittest
+from app import value
+
+
+class TestApp(unittest.TestCase):
+    def test_value(self):
+        self.assertEqual(value(), 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
+""")
+
+
+def cleanup_environment(workspace: str):
+    print(f"\n[Demo Cleanup] Removing edit planner workspace: {workspace}")
+    if os.path.exists(workspace):
+        shutil.rmtree(workspace)
+
+
+def main():
+    workspace = os.path.abspath("temp_edit_planner")
+    setup_environment(workspace)
+
+    try:
+        model = EditPlannerMockModel()
+        runner = AgentRunner(
+            model=model,
+            workspace_dir=workspace,
+            test_command="python -m unittest test_app",
+        )
+        trace = runner.run(
+            "Update app.py using an edit plan before patching.",
+            max_iterations=7,
+            checkpoint_path="edit_planner_checkpoint.json",
+        )
+        trace.print_summary()
+    finally:
+        cleanup_environment(workspace)
+
+
+if __name__ == "__main__":
+    main()

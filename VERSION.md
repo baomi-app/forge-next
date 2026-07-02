@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.19.0-edit-planner (2026-07-02)
+
+In this version, we introduced **Patch Strategy / Edit Planner** so agents can produce an inspectable edit strategy before modifying files.
+
+### Key Changes
+- **Edit Planner (`forge/edit_plan.py`)**: Added pre-edit planning with task goals, files to inspect, planned file-level edits, scope risks, focused verification suggestions, and next steps.
+- **Planning Tool (`forge/core_tools/edit_plan.py`)**: Added `plan_edits`, a tool for planning edits before patching the workspace.
+- **Simulation Demo (`examples/demo_edit_planner.py`)**: Demonstrates planning, inspecting, patching, and verifying a small code/test change.
+- **Unit Tests (`tests/test_edit_plan.py`)**: Covers explicit target plans, missing goals, inferred files, missing-file risks, tool execution, and tool registration.
+- **README Update (`README.md`)**: Documents edit planning and the expanded core tool set.
+
 ## v0.18.0-commit-orchestration (2026-07-02)
 
 In this version, we introduced **Commit Orchestration** so agents can turn task-scoped changes into a clear staging plan, safely update the git index, create one atomic commit, and verify the committed file set.
