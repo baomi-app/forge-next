@@ -1,17 +1,17 @@
 import os
-import copy
 from typing import Optional
 from threading import RLock
 from forge.completion import CompletionGate
 from forge.executor import ToolExecutor
 from forge.model import BaseModel
 from forge.tools import ToolRegistry, registry
-from forge.trace import ExecutionTrace, StepTrace
+from forge.trace import ExecutionTrace
 from forge.verifier import Verifier
 from forge.sandbox import LocalRestrictedSandbox
 from forge.session import AgentSession
 from forge.subagents import SubagentManager
 from forge.tool_capabilities import ToolCapabilities
+from forge.agent_loop_runner import AgentLoopRunner
 
 DEFAULT_SYSTEM_PROMPT_TEMPLATE = """You are a software engineering assistant (Coding Agent) running locally in a workspace directory.
 You have access to these coding tools: {tool_names}.
@@ -87,6 +87,14 @@ class AgentRunner:
             tool_lock=self.tool_lock,
             journal_recorder=self.session.journal_recorder,
             runtime=self.tool_capabilities,
+        )
+        self.agent_loop_runner = AgentLoopRunner(
+            model=self.model,
+            tool_registry=self.tool_registry,
+            tool_executor=self.tool_executor,
+            completion_gate=self.completion_gate,
+            model_lock=self.model_lock,
+            checkpoint_saver=self.save_checkpoint,
         )
 
     def _build_tool_capabilities(self) -> ToolCapabilities:
@@ -181,66 +189,13 @@ class AgentRunner:
             # Always ensure cwd is switched to workspace
             os.chdir(self.workspace_dir)
 
-            for iteration in range(start_iteration + 1, max_iterations + 1):
-                print(f"\n[Runner] === Iteration {iteration} ===")
-
-                step = StepTrace(step_idx=iteration)
-                step.start_timer()
-
-                # 2. Get current history & tool schemas
-                messages = context.get_messages()
-                # Deep copy messages for tracing to keep a clean snapshot of context state at this step
-                step.input_messages = copy.deepcopy(messages)
-
-                # Fetch tool schemas from registry
-                tool_definitions = self.tool_registry.tool_definitions
-
-                # 3. Model call (Context -> Model)
-                try:
-                    with self.model_lock:
-                        content, tool_calls = self.model.generate(messages, tool_definitions)
-                except Exception as e:
-                    err_msg = f"Fatal Error calling model: {str(e)}"
-                    print(f"[Runner] {err_msg}")
-                    trace.finish(err_msg)
-                    return trace
-
-                step.model_text_response = content
-                if tool_calls:
-                    step.tool_calls = tool_calls
-
-                # Print thoughts if any
-                if content:
-                    print(f"[Model Thought/Message]: {content.strip()}")
-
-                # 4. Handle tool execution / continuation decision
-                if not tool_calls:
-                    result = self.completion_gate.evaluate(content, context, trace, step)
-                    if result.passed:
-                        if os.path.exists(checkpoint_path):
-                            os.remove(checkpoint_path)
-                            print(f"[Checkpoint] Cleaned up temporary checkpoint file: {checkpoint_path}")
-                        break
-
-                    self.save_checkpoint(checkpoint_path, iteration, context, trace)
-                    continue
-
-                # If tool calls are requested, we must add the assistant response to the conversation history.
-                # Tool-calling chat APIs require matching tool results to their respective assistant tool calls.
-                context.add_assistant(content, tool_calls)
-
-                self.tool_executor.execute_tool_calls(tool_calls, context, step)
-
-                step.stop_timer()
-                trace.add_step(step)
-
-                # Save checkpoint at the end of each successful iteration
-                self.save_checkpoint(checkpoint_path, iteration, context, trace)
-
-            else:
-                # Loop exhausted without model stopping voluntarily
-                print("\n[Runner] Warning: Reached max iterations limit!")
-                trace.finish("Failed: Maximum iterations reached without resolving the task.")
+            trace = self.agent_loop_runner.run_loop(
+                context=context,
+                trace=trace,
+                start_iteration=start_iteration,
+                max_iterations=max_iterations,
+                checkpoint_path=checkpoint_path,
+            )
 
         finally:
             # Always restore the original working directory

@@ -1,5 +1,15 @@
 # Forge Version History
 
+## v0.25.0-run-runtime-extraction (2026-07-02)
+
+In this version, we introduced **AgentLoopRunner / AgentRunner Loop Extraction** so per-iteration model/tool/completion flow lives outside the top-level runner.
+
+### Key Changes
+- **Agent Loop Runner (`forge/agent_loop_runner.py`)**: Added a dedicated component for model turns, tool-call handoff, completion-gate handling, max-iteration termination, and checkpoint-save timing.
+- **Runner Wiring (`forge/runner.py`)**: Reduced `AgentRunner.run` to session preparation, dependency synchronization, workspace directory management, and delegation to `AgentLoopRunner`.
+- **Unit Tests (`tests/test_agent_loop_runner.py`)**: Covers tool-turn checkpoint saves and checkpoint cleanup when completion passes.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the new loop boundary and runtime architecture rule.
+
 ## v0.24.0-tool-runtime-injection (2026-07-02)
 
 In this version, we introduced **ToolCapabilities / Capability Injection** so core tools receive narrow per-run capabilities instead of reaching across the full runner.
