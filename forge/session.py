@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from forge.changes import ChangeSet
 from forge.context import Context
+from forge.journal import JournalRecorder, TaskJournal
 from forge.trace import ExecutionTrace, StepTrace
 
 
@@ -21,6 +22,8 @@ class AgentSession:
         self.system_prompt = system_prompt
         self.test_command = test_command
         self.change_set = change_set or ChangeSet(self.workspace_dir)
+        self.journal = TaskJournal()
+        self.journal_recorder = JournalRecorder(self.journal)
         self.context = Context(system_prompt=self.system_prompt)
         self.trace: Optional[ExecutionTrace] = None
         self.current_iteration = 0
@@ -28,6 +31,9 @@ class AgentSession:
     def start(self, task: str) -> None:
         """Start a fresh task while keeping the current transaction baseline."""
         self.current_iteration = 0
+        self.journal = TaskJournal()
+        self.journal_recorder = JournalRecorder(self.journal)
+        self.journal_recorder.task_started(task)
         self.context = Context(system_prompt=self.system_prompt)
         self.context.add_user(task)
         self.trace = ExecutionTrace(task)
@@ -44,6 +50,7 @@ class AgentSession:
             "messages": self.context.messages,
             "test_command": self.test_command,
             "change_set": self.change_set.to_dict(),
+            "journal": self.journal.to_dict(),
             "trace_steps": [step.to_dict() for step in self.trace.steps],
         }
 
@@ -60,6 +67,9 @@ class AgentSession:
         change_set = ChangeSet(self.workspace_dir)
         if data.get("change_set"):
             change_set.restore_from_dict(data["change_set"])
+        journal = TaskJournal()
+        if data.get("journal"):
+            journal.restore_from_dict(data["journal"])
 
         self.system_prompt = data.get("system_prompt", self.system_prompt)
         self.test_command = data.get("test_command", self.test_command)
@@ -67,6 +77,8 @@ class AgentSession:
         self.context = context
         self.trace = trace
         self.change_set = change_set
+        self.journal = journal
+        self.journal_recorder = JournalRecorder(self.journal)
         return task
 
     def save_checkpoint(self, filepath: str) -> None:

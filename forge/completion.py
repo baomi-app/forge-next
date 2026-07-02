@@ -17,8 +17,9 @@ class CompletionResult:
 class CompletionGate:
     """Decides whether the agent may finish after a no-tool model response."""
 
-    def __init__(self, verifier: Verifier):
+    def __init__(self, verifier: Verifier, journal_recorder=None):
         self.verifier = verifier
+        self.journal_recorder = journal_recorder
 
     def evaluate(
         self,
@@ -30,6 +31,8 @@ class CompletionGate:
         """Run completion checks and update context/trace for pass or block."""
         is_passed, report = self.verifier.verify()
         if is_passed:
+            if self.journal_recorder:
+                self.journal_recorder.verifier_finished(True, report)
             step.stop_timer()
             trace.add_step(step)
             print("[Runner] Verifier PASSED! Task complete.")
@@ -37,6 +40,8 @@ class CompletionGate:
             return CompletionResult(passed=True, report=report)
 
         print(f"[Runner] Verifier BLOCKED termination. Report:\n{report}")
+        if self.journal_recorder:
+            self.journal_recorder.verifier_finished(False, report)
         context.add_assistant(content, None)
         context.add_user(report)
         step.tool_results.append({

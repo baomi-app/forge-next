@@ -65,13 +65,13 @@ class AgentRunner:
         self.system_prompt = system_prompt or build_system_prompt(self.tool_registry)
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
-        self.completion_gate = CompletionGate(self.verifier)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
         self.session = AgentSession(
             workspace_dir=self.workspace_dir,
             system_prompt=self.system_prompt,
             test_command=self.verifier.test_command,
         )
+        self.completion_gate = CompletionGate(self.verifier, journal_recorder=self.session.journal_recorder)
         self.change_set = self.session.change_set
         self.model_lock = model_lock or RLock()
         self.tool_lock = tool_lock or RLock()
@@ -83,6 +83,7 @@ class AgentRunner:
             session=self.session,
             subagent_manager=self.subagent_manager,
             tool_lock=self.tool_lock,
+            journal_recorder=self.session.journal_recorder,
         )
 
     def save_checkpoint(self, filepath: str, current_iteration: int, context, trace: ExecutionTrace):
@@ -136,6 +137,7 @@ class AgentRunner:
                 self.system_prompt = self.session.system_prompt
                 self.verifier.test_command = self.session.test_command
                 self.change_set = self.session.change_set
+                self.completion_gate.journal_recorder = self.session.journal_recorder
                 restored = True
 
                 print(f"[Runner] Resuming agent loop from Iteration {start_iteration + 1}...")
@@ -146,11 +148,13 @@ class AgentRunner:
         # If starting fresh
         if not restored:
             self.session.start(task)
+            self.completion_gate.journal_recorder = self.session.journal_recorder
             print(f"\n[Runner] Starting fresh Agent Loop for task: '{task}'")
 
         context = self.session.context
         trace = self.session.trace
         self.tool_executor.session = self.session
+        self.tool_executor.journal_recorder = self.session.journal_recorder
         self.tool_executor.runner = self
         self.tool_executor.sandbox = self.sandbox
         self.tool_executor.subagent_manager = self.subagent_manager

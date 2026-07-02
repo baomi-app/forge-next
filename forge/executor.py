@@ -20,6 +20,7 @@ class ToolExecutor:
         session: Optional[Any] = None,
         subagent_manager: Optional[Any] = None,
         tool_lock: Optional[RLock] = None,
+        journal_recorder: Optional[Any] = None,
     ):
         self.tool_registry = tool_registry
         self.sandbox = sandbox
@@ -27,6 +28,7 @@ class ToolExecutor:
         self.session = session
         self.subagent_manager = subagent_manager
         self.tool_lock = tool_lock or RLock()
+        self.journal_recorder = journal_recorder
 
     def execute_tool_calls(
         self,
@@ -148,3 +150,5 @@ class ToolExecutor:
             "name": func_name,
             "content": result,
         })
+        if self.journal_recorder:
+            self.journal_recorder.tool_finished(func_name, result)

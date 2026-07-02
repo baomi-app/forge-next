@@ -1,5 +1,18 @@
 # Forge Version History
 
+## v0.20.0-task-journal (2026-07-02)
+
+In this version, we introduced **Persistent Task Journal** so long-running tasks can preserve structured plans, decisions, tool outcomes, verification results, and next steps across checkpoints.
+
+### Key Changes
+- **Task Journal (`forge/journal.py`)**: Added structured journal entries with kind, summary, details, timestamps, formatting, and checkpoint serialization.
+- **Journal Recorder (`forge/journal.py`)**: Added a recorder layer that converts runtime events into journal entries, centralizing event kinds, summaries, failure detection, and truncation policy.
+- **Session and Runtime Integration (`forge/session.py`, `forge/executor.py`, `forge/completion.py`, `forge/runner.py`)**: Persisted journals in checkpoints and wired runtime components to report task starts, tool results, and completion verification outcomes through the recorder.
+- **Journal Tools (`forge/core_tools/journal.py`)**: Added `journal_note` for explicit agent notes and `read_journal` for recent task history.
+- **Simulation Demo (`examples/demo_task_journal.py`)**: Demonstrates recording plan, decision, verification, and tool history during a task.
+- **Unit Tests (`tests/test_journal.py`)**: Covers journal formatting, checkpoint persistence, tool usage, automatic tool-result records, verifier records, and registration.
+- **README Update (`README.md`)**: Documents persistent task journaling and the expanded core tool set.
+
 ## v0.19.0-edit-planner (2026-07-02)
 
 In this version, we introduced **Patch Strategy / Edit Planner** so agents can produce an inspectable edit strategy before modifying files.

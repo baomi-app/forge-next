@@ -36,13 +36,15 @@ Forge keeps the runtime split into focused components:
 - `CommitPlanner`: turns task-scoped changes into staging recommendations, commit risks, and a suggested atomic commit message.
 - `CommitOrchestrator`: inspects git state, stages planned files, creates an atomic commit, and verifies the committed file set.
 - `EditPlanner`: creates a pre-edit strategy with files to inspect, planned edits, risks, and verification commands.
+- `TaskJournal`: stores structured task events such as plans, decisions, failures, verification results, and next steps across checkpoints.
+- `JournalRecorder`: converts runtime events into task journal entries so executors and completion checks do not own journal writing policy.
 
 New runtime behavior should land in the narrowest matching component instead of growing `AgentRunner` or broadening core tools.
 
 ## Features
 
 - **Agent Loop**: Continuously executes the task until the model decides to stop or reaches iteration limits.
-- **15 Core Coding Tools**:
+- **17 Core Coding Tools**:
   - `list_files`: Recursive listing of files in the workspace.
   - `search_code`: Search for query string inside files.
   - `inspect_code_symbols`: Summarize Python imports, classes, methods, and functions with line numbers.
@@ -58,6 +60,8 @@ New runtime behavior should land in the narrowest matching component instead of 
   - `plan_commit`: Plan staging and commit boundaries for the current transaction.
   - `commit_changes`: Stage planned transaction files and create one git commit when the plan is safe.
   - `plan_edits`: Plan file edits before modifying the workspace.
+  - `journal_note`: Record a structured task journal note.
+  - `read_journal`: Read recent task journal entries.
 - **Zero-Dependency Mock Mode**: Run the agent immediately without any API keys or internet connection.
 - **Trace Logger**: Detailed logging of every turn (thoughts, tool inputs, outputs, tokens, execution time).
 - **Project-Aware Verifier Gatekeeper**: Automatically checks Python syntax, runs explicit verification commands, and discovers common project checks such as Python unittest, package scripts, Go tests, and Cargo tests before allowing the agent to finish.
@@ -70,6 +74,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Focused Test Selection**: Suggests targeted verification commands from changed files before broader final checks.
 - **Commit Orchestration**: Plans commit boundaries, inspects the git index, stages only approved transaction files, creates an atomic commit, and reports remaining workspace state.
 - **Patch Strategy / Edit Planner**: Builds an inspectable edit plan before patching so the agent can review scope, order, risks, and verification up front.
+- **Persistent Task Journal**: Records plans, decisions, tool outcomes, verification results, and next steps so long tasks can resume with structured continuity.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.
@@ -160,6 +165,12 @@ python examples/demo_commit_orchestration.py
 The edit planner demo shows an agent planning files, risks, and verification before applying patches:
 ```bash
 python examples/demo_edit_planner.py
+```
+
+### Run Task Journal Demo
+The task journal demo shows an agent recording plan, decision, verification, and tool history during a task:
+```bash
+python examples/demo_task_journal.py
 ```
 
 ### Run Real Agent
