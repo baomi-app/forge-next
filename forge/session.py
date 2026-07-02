@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Any, Dict, Optional
 
@@ -80,17 +79,3 @@ class AgentSession:
         self.journal = journal
         self.journal_recorder = JournalRecorder(self.journal)
         return task
-
-    def save_checkpoint(self, filepath: str) -> None:
-        """Write the current session state to a checkpoint file."""
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
-
-    def load_checkpoint(self, filepath: str) -> Dict[str, Any]:
-        """Read checkpoint data from disk."""
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def restore_checkpoint(self, filepath: str) -> str:
-        """Restore this session from a checkpoint file and return the task."""
-        return self.restore_from_dict(self.load_checkpoint(filepath))

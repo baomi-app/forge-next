@@ -1,5 +1,16 @@
 # Forge Version History
 
+## v0.28.0-checkpoint-store (2026-07-02)
+
+In this version, we introduced **CheckpointStore** so checkpoint persistence, restore, path resolution, existence checks, and cleanup live outside the runner loop and session serialization model.
+
+### Key Changes
+- **Checkpoint Store (`forge/checkpoint.py`)**: Added a persistence boundary for workspace-relative checkpoint paths, save/load/restore, existence checks, and deletion.
+- **Session Boundary (`forge/session.py`)**: Kept checkpoint serialization in `AgentSession` while moving file IO out to `CheckpointStore`.
+- **Runner Integration (`forge/runner.py`, `forge/agent_loop_runner.py`)**: Delegated checkpoint save, restore, existence checks, and cleanup to the store while preserving existing resume behavior.
+- **Unit Tests (`tests/test_checkpoint.py`, `tests/test_session.py`, `tests/test_agent_loop_runner.py`)**: Covers checkpoint round trips, path resolution, cleanup, and runtime checkpoint deletion through the store.
+- **README and Agent Guidance (`README.md`, `AGENTS.md`)**: Documents the checkpoint persistence boundary.
+
 ## v0.27.0-human-review-loop (2026-07-02)
 
 In this version, we introduced **Human Review Loop** so agents can create explicit approval checkpoints and record human decisions before continuing sensitive plan, diff, or commit work.

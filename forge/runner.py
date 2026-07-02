@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from threading import RLock
 from forge.completion import CompletionGate
+from forge.checkpoint import CheckpointStore
 from forge.executor import ToolExecutor
 from forge.model import BaseModel
 from forge.tools import ToolRegistry, registry
@@ -66,6 +67,7 @@ class AgentRunner:
         self.system_prompt = system_prompt or build_system_prompt(self.tool_registry)
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
+        self.checkpoint_store = CheckpointStore(self.workspace_dir)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
         self.session = AgentSession(
             workspace_dir=self.workspace_dir,
@@ -95,6 +97,7 @@ class AgentRunner:
             completion_gate=self.completion_gate,
             model_lock=self.model_lock,
             checkpoint_saver=self.save_checkpoint,
+            checkpoint_store=self.checkpoint_store,
         )
 
     def _build_tool_capabilities(self) -> ToolCapabilities:
@@ -114,14 +117,14 @@ class AgentRunner:
         self.session.test_command = self.verifier.test_command
         self.session.change_set = self.change_set
         try:
-            self.session.save_checkpoint(filepath)
+            self.checkpoint_store.save(filepath, self.session)
             print(f"[Checkpoint] Successfully saved session state to {filepath}")
         except Exception as e:
             print(f"[Warning] Failed to save checkpoint to {filepath}: {str(e)}")
 
     def load_checkpoint(self, filepath: str):
         """Deserialize checkpoint state from disk."""
-        data = self.session.load_checkpoint(filepath)
+        data = self.checkpoint_store.load(filepath)
         print(f"[Checkpoint] Successfully loaded session state from {filepath}")
         return data
 
@@ -150,8 +153,8 @@ class AgentRunner:
         try:
             os.chdir(self.workspace_dir)
 
-            if resume_from and os.path.exists(resume_from):
-                task = self.session.restore_checkpoint(resume_from)
+            if resume_from and self.checkpoint_store.exists(resume_from):
+                task = self.checkpoint_store.restore(resume_from, self.session)
                 print(f"[Checkpoint] Successfully loaded session state from {resume_from}")
                 start_iteration = self.session.current_iteration
                 self.system_prompt = self.session.system_prompt

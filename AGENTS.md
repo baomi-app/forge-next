@@ -19,6 +19,7 @@ Forge Next is a coding agent for real software engineering work. Keep changes ea
 
 - Keep `AgentRunner` focused on the agent loop: prepare context, call the model, dispatch tools, evaluate completion, checkpoint progress, and return the trace.
 - Put per-run state and checkpoint serialization in `AgentSession`, not directly in `AgentRunner`.
+- Put checkpoint file persistence, path resolution, restore, and cleanup in `CheckpointStore`.
 - Put iteration advancement in `AgentLoopRunner`: model turn execution, tool-call handoff, completion-gate invocation, and checkpoint-save timing.
 - Put model-requested tool execution details in `ToolExecutor`, including tool-call partitioning, JSON argument parsing, dependency injection, and result recording.
 - Represent tool execution outcomes with `ToolResult`; do not infer tool status only from output strings.

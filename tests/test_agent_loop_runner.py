@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from forge.completion import CompletionResult
+from forge.checkpoint import CheckpointStore
 from forge.context import Context
 from forge.executor import ToolExecutor
 from forge.model import BaseModel
@@ -81,6 +82,7 @@ class TestAgentLoopRunner(unittest.TestCase):
                 tool_registry=ToolRegistry(),
                 tool_executor=ToolExecutor(tool_registry=ToolRegistry()),
                 completion_gate=PassingCompletionGate(),
+                checkpoint_store=CheckpointStore(workspace),
             )
             context = Context(system_prompt="system")
             context.add_user("finish")

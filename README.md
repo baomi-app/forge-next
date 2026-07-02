@@ -26,6 +26,7 @@ Forge keeps the runtime split into focused components:
 
 - `AgentRunner`: orchestrates the main loop, model calls, tool dispatch, completion checks, checkpoint timing, and trace return.
 - `AgentSession`: owns per-run state such as context, trace, change transaction state, current iteration, and checkpoint serialization.
+- `CheckpointStore`: owns checkpoint file path resolution, persistence, restore, existence checks, and cleanup.
 - `AgentLoopRunner`: advances prepared agent sessions through model turns, tool handoff, completion checks, and checkpoint-save timing.
 - `ToolExecutor`: handles model-requested tool calls, including argument parsing, dependency injection, standard tool execution, concurrent subagent dispatch, and tool-result recording.
 - `ToolResult`: standardizes tool execution status, model-facing content, error type, and metadata before results enter traces or journals.
@@ -91,6 +92,7 @@ New runtime behavior should land in the narrowest matching component instead of 
 - **Agent Loop Runner Extraction**: Keeps iteration advancement outside `AgentRunner`, giving model turns, tool handoff, completion checks, and checkpoint-save timing a dedicated component.
 - **Structured Tool Results**: Records tool status, content, error type, and metadata in traces and journals while preserving plain text tool messages for the model.
 - **Human Review Loop**: Lets the agent request approval checkpoints around plans, diffs, and commits, then record the human decision in the task journal.
+- **Checkpoint Store**: Keeps checkpoint file persistence, restore, and cleanup outside the runner loop and session serialization model.
 - **Checkpoint & Resume**: Saves message history, iteration state, and trace steps so interrupted runs can continue.
 - **Structured Planning**: Prompts agents to maintain `Plan`, `Thought`, and `Action` sections and revise plans when blocked.
 - **Context Compiler**: Folds older history and extracts important traceback details from long tool outputs.

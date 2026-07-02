@@ -1,8 +1,8 @@
 import copy
-import os
 from threading import RLock
 from typing import Callable, Optional
 
+from forge.checkpoint import CheckpointStore
 from forge.completion import CompletionGate
 from forge.context import Context
 from forge.executor import ToolExecutor
@@ -22,6 +22,7 @@ class AgentLoopRunner:
         completion_gate: CompletionGate,
         model_lock: Optional[RLock] = None,
         checkpoint_saver: Optional[Callable[[str, int, Context, ExecutionTrace], None]] = None,
+        checkpoint_store: Optional[CheckpointStore] = None,
     ):
         self.model = model
         self.tool_registry = tool_registry
@@ -29,6 +30,7 @@ class AgentLoopRunner:
         self.completion_gate = completion_gate
         self.model_lock = model_lock or RLock()
         self.checkpoint_saver = checkpoint_saver
+        self.checkpoint_store = checkpoint_store or CheckpointStore()
 
     def run_loop(
         self,
@@ -115,6 +117,5 @@ class AgentLoopRunner:
             self.checkpoint_saver(checkpoint_path, iteration, context, trace)
 
     def _remove_checkpoint(self, checkpoint_path: str) -> None:
-        if os.path.exists(checkpoint_path):
-            os.remove(checkpoint_path)
+        if self.checkpoint_store.delete(checkpoint_path):
             print(f"[Checkpoint] Cleaned up temporary checkpoint file: {checkpoint_path}")

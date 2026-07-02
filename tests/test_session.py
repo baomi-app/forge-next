@@ -43,27 +43,6 @@ class TestAgentSession(unittest.TestCase):
                 [("app.py", "modified")],
             )
 
-    def test_checkpoint_round_trip(self):
-        with tempfile.TemporaryDirectory() as workspace:
-            checkpoint_path = os.path.join(workspace, "checkpoint.json")
-            session = AgentSession(
-                workspace_dir=workspace,
-                system_prompt="You are a coding agent.",
-            )
-            session.start("Remember me")
-            session.current_iteration = 2
-            session.save_checkpoint(checkpoint_path)
-
-            restored = AgentSession(
-                workspace_dir=workspace,
-                system_prompt="You are a coding agent.",
-            )
-            task = restored.restore_checkpoint(checkpoint_path)
-
-        self.assertEqual(task, "Remember me")
-        self.assertEqual(restored.current_iteration, 2)
-        self.assertEqual(restored.context.messages[1]["content"], "Remember me")
-
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
