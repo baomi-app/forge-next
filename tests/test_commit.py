@@ -5,6 +5,7 @@ import unittest
 
 from forge.changes import ChangeSet
 from forge.commit import CommitOrchestrator, CommitPlanner, GitStateInspector
+from forge.llm_decisions import LLMCommitFileDecision, LLMCommitPlanDecision
 from forge.tool_capabilities import ToolCapabilities
 from forge.tools import commit_changes, plan_commit, registry
 
@@ -12,6 +13,16 @@ from forge.tools import commit_changes, plan_commit, registry
 class FakeSession:
     def __init__(self, change_set):
         self.change_set = change_set
+
+
+class FakeCommitService:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def plan_commit(self, task_goal, changes, diff):
+        self.calls.append((task_goal, changes, diff))
+        return self.decision
 
 
 class TestCommitPlanner(unittest.TestCase):
@@ -25,37 +36,45 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
             self._write_file(workspace, "README.md", "new\n")
-            plan = CommitPlanner().plan(change_set, task_goal="add value update")
+            service = self._commit_service(
+                message="feat: add value update",
+                files=["README.md", "app.py", "test_app.py"],
+            )
+            plan = CommitPlanner(decision_service=service).plan(change_set, task_goal="add value update")
 
         self.assertEqual(plan.status, "READY")
         self.assertEqual(plan.message, "feat: add value update")
         self.assertEqual([file.path for file in plan.files], ["README.md", "app.py", "test_app.py"])
         self.assertEqual(plan.risks, [])
+        self.assertEqual(service.calls[0][0], "add value update")
 
-    def test_review_plan_warns_for_code_without_tests_or_docs(self):
+    def test_review_plan_uses_llm_risks(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             change_set = ChangeSet(workspace)
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
-            rendered = CommitPlanner().format_plan(change_set)
+            service = self._commit_service(
+                status="REVIEW",
+                message="feat: update app value",
+                files=["app.py"],
+                risks=["LLM says test coverage needs confirmation."],
+                next_steps=["Run focused tests before staging."],
+            )
+            rendered = CommitPlanner(decision_service=service).format_plan(change_set)
 
         self.assertIn("Status: REVIEW", rendered)
-        self.assertIn("Code changes have no staged test changes", rendered)
-        self.assertIn("Runtime behavior changed without staged docs or examples", rendered)
+        self.assertIn("test coverage needs confirmation", rendered)
 
-    def test_blocks_generated_or_local_files(self):
+    def test_blocks_missing_llm_commit_planning(self):
         with tempfile.TemporaryDirectory() as workspace:
             change_set = ChangeSet(workspace)
 
-            self._write_file(workspace, ".vscode/settings.json", "{}\n")
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             plan = CommitPlanner().plan(change_set)
 
         self.assertEqual(plan.status, "BLOCK")
-        excluded = [file for file in plan.files if file.action == "exclude"]
-        self.assertEqual(excluded[0].path, ".vscode/settings.json")
-        self.assertIn("Excluded files must be removed", plan.risks[0])
+        self.assertIn("LLM commit planning is not configured", plan.risks[0])
 
     def test_blocks_empty_transaction(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -67,23 +86,35 @@ class TestCommitPlanner(unittest.TestCase):
         self.assertEqual(plan.status, "BLOCK")
         self.assertIn("No transaction changes", plan.risks[0])
 
-    def test_docs_only_commit_message(self):
+    def test_filters_file_outside_current_transaction(self):
         with tempfile.TemporaryDirectory() as workspace:
-            self._write_file(workspace, "README.md", "old\n")
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
             change_set = ChangeSet(workspace)
 
-            self._write_file(workspace, "README.md", "new\n")
-            plan = CommitPlanner().plan(change_set)
+            self._write_file(workspace, "app.py", "VALUE = 2\n")
+            service = self._commit_service(
+                message="feat: update app value",
+                files=["app.py", "unrelated.txt"],
+            )
+            plan = CommitPlanner(decision_service=service).plan(change_set)
 
-        self.assertEqual(plan.status, "READY")
-        self.assertEqual(plan.message, "docs: update documentation")
+        self.assertEqual(plan.status, "BLOCK")
+        self.assertIn("outside the current transaction", "\n".join(plan.risks))
 
     def test_plan_commit_tool_uses_transaction_state(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
             self._write_file(workspace, "README.md", "old\n")
-            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
+            service = self._commit_service(
+                message="feat: update app value",
+                files=["README.md", "app.py", "test_app.py"],
+            )
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=FakeSession(ChangeSet(workspace)),
+                decision_service=service,
+            )
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
@@ -128,7 +159,11 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
             self._write_file(workspace, "README.md", "new\n")
-            result = CommitOrchestrator().commit(change_set, task_goal="update app value")
+            service = self._commit_service(
+                message="feat: update app value",
+                files=["README.md", "app.py", "test_app.py"],
+            )
+            result = CommitOrchestrator(decision_service=service).commit(change_set, task_goal="update app value")
             last_message = self._git(workspace, "log", "-1", "--pretty=%s").stdout.strip()
             status = self._git(workspace, "status", "--short").stdout.strip()
             remaining_changes = change_set.changes()
@@ -156,7 +191,11 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
             self._write_file(workspace, "README.md", "new\n")
-            result = CommitOrchestrator().commit(change_set, task_goal="update app value")
+            service = self._commit_service(
+                message="feat: update app value",
+                files=["README.md", "app.py", "test_app.py"],
+            )
+            result = CommitOrchestrator(decision_service=service).commit(change_set, task_goal="update app value")
 
         self.assertEqual(result.status, "BLOCKED")
         self.assertIn("Git index already contains files outside this commit plan.", result.notes)
@@ -171,7 +210,14 @@ class TestCommitPlanner(unittest.TestCase):
             change_set = ChangeSet(workspace)
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
-            result = CommitOrchestrator().commit(change_set, task_goal="update app value")
+            service = self._commit_service(
+                status="REVIEW",
+                message="feat: update app value",
+                files=["app.py"],
+                risks=["LLM requested human review before commit."],
+                next_steps=["Review before staging."],
+            )
+            result = CommitOrchestrator(decision_service=service).commit(change_set, task_goal="update app value")
             status = self._git(workspace, "status", "--short").stdout.strip()
 
         self.assertEqual(result.status, "BLOCKED")
@@ -186,7 +232,15 @@ class TestCommitPlanner(unittest.TestCase):
             self._write_file(workspace, "README.md", "old\n")
             self._git(workspace, "add", ".")
             self._git(workspace, "commit", "-m", "init")
-            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
+            service = self._commit_service(
+                message="feat: update app value",
+                files=["README.md", "app.py", "test_app.py"],
+            )
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=FakeSession(ChangeSet(workspace)),
+                decision_service=service,
+            )
 
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
@@ -196,6 +250,30 @@ class TestCommitPlanner(unittest.TestCase):
         self.assertIn("Commit orchestration result", output)
         self.assertIn("Status: COMMITTED", output)
         self.assertIn("Commit message: feat: update app value", output)
+
+    def _commit_service(
+        self,
+        message="feat: update app value",
+        files=None,
+        status="READY",
+        risks=None,
+        next_steps=None,
+    ):
+        files = files or ["app.py"]
+        risks = risks or []
+        next_steps = next_steps or ["Stage the LLM-approved files.", "Commit with the suggested message."]
+        return FakeCommitService(
+            LLMCommitPlanDecision(
+                status=status,
+                message=message,
+                files=[
+                    LLMCommitFileDecision(path=path, action="stage", reason="LLM selected this file.")
+                    for path in files
+                ],
+                risks=risks,
+                next_steps=next_steps,
+            )
+        )
 
     def _write_file(self, workspace, relative_path, content):
         path = os.path.join(workspace, relative_path)

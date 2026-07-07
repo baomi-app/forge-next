@@ -27,7 +27,8 @@ def plan_edits(
         workspace_dir = runtime.workspace_dir
     if not workspace_dir:
         return "Error: Workspace state is not available."
-    return EditPlanner(workspace_dir).format_plan(
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return EditPlanner(workspace_dir, decision_service=decision_service).format_plan(
         task_goal=task_goal,
         target_files=target_files,
         max_files=max_files,

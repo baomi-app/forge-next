@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Tuple, List, Optional, Dict, Any
 
+from forge.llm_decisions import LLMDecisionError
 from forge.project import ProjectPolicy, ProjectProfiler
 
 
@@ -62,6 +63,7 @@ class Verifier:
         auto_discover: bool = True,
         timeout_seconds: int = 30,
         policy: Optional[ProjectPolicy] = None,
+        decision_service: Optional[Any] = None,
     ):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.test_command = test_command
@@ -69,6 +71,7 @@ class Verifier:
         self.timeout_seconds = timeout_seconds
         self.python_executable = shlex.quote(sys.executable)
         self.policy = policy or ProjectPolicy()
+        self.decision_service = decision_service
 
     def verify_syntax(self) -> Tuple[bool, List[str]]:
         """Scans all Python files recursively in the workspace to verify syntax compiles correctly.
@@ -392,77 +395,29 @@ class Verifier:
         return "\n".join(lines)
 
     def triage_failure(self, check: VerificationCheck, output: str, exit_code: int) -> FailureTriage:
-        """Classify failed output and produce a repair-oriented hint."""
-        lowered = output.lower()
-        if "no module named" in lowered or "cannot find module" in lowered or "module not found" in lowered:
+        """Ask the LLM to classify failed output and produce a repair-oriented hint."""
+        if not self.decision_service:
             return FailureTriage(
-                kind="missing_dependency",
-                summary="The check could not import or resolve a required dependency.",
-                next_step="Verify the dependency name, install it, or adjust the code/import path to use an available module.",
-                evidence=self._evidence_lines(output, ["no module named", "cannot find module", "module not found"]),
+                kind="llm_unavailable",
+                summary="LLM failure triage is not configured.",
+                next_step="Configure an LLMDecisionService so Forge can diagnose this verification failure.",
+                evidence=self._first_nonempty_lines(output),
             )
-        if "command not found" in lowered or "not recognized as an internal" in lowered:
+        try:
+            decision = self.decision_service.triage_failure(check, output, exit_code)
             return FailureTriage(
-                kind="missing_command",
-                summary="The check references a command that is unavailable in this environment.",
-                next_step="Install the command or change the project check to an available executable.",
-                evidence=self._evidence_lines(output, ["command not found", "not recognized as an internal"]),
+                kind=decision.kind,
+                summary=decision.summary,
+                next_step=decision.next_step,
+                evidence=decision.evidence,
             )
-        if "syntaxerror" in lowered or "indentationerror" in lowered:
+        except LLMDecisionError as exc:
             return FailureTriage(
-                kind="syntax_error",
-                summary="The verification command failed while parsing source code.",
-                next_step="Fix the reported syntax or indentation location before investigating test assertions.",
-                evidence=self._evidence_lines(output, ["syntaxerror", "indentationerror"]),
+                kind="llm_decision_error",
+                summary="LLM failure triage returned an invalid or unavailable decision.",
+                next_step="Fix the LLM decision configuration or rerun with a valid structured triage response.",
+                evidence=[str(exc), *self._first_nonempty_lines(output, max_lines=2)],
             )
-        if "assertionerror" in lowered or "assert " in lowered or ("expected" in lowered and "actual" in lowered):
-            return FailureTriage(
-                kind="assertion_failure",
-                summary="A test assertion failed, so behavior differs from the expected result.",
-                next_step="Read the failing test expectation and adjust the implementation or test fixture accordingly.",
-                evidence=self._evidence_lines(output, ["assertionerror", "assert ", "expected", "actual"]),
-            )
-        if "permission denied" in lowered:
-            return FailureTriage(
-                kind="permission_error",
-                summary="The check could not access a file or execute a command because of permissions.",
-                next_step="Check file permissions, executable bits, and whether the command writes outside the workspace.",
-                evidence=self._evidence_lines(output, ["permission denied"]),
-            )
-        if "no such file or directory" in lowered:
-            return FailureTriage(
-                kind="missing_file",
-                summary="The check expected a file or path that does not exist.",
-                next_step="Create the missing file, fix the path, or run the command from the correct workspace.",
-                evidence=self._evidence_lines(output, ["no such file or directory"]),
-            )
-        if check.category == "lint":
-            return FailureTriage(
-                kind="lint_failure",
-                summary="A lint check reported style or static quality violations.",
-                next_step="Fix the reported lint diagnostics, then rerun the lint command.",
-                evidence=self._evidence_lines(output, ["error", "warning", "unexpected"]),
-            )
-        if check.category == "typecheck":
-            return FailureTriage(
-                kind="typecheck_failure",
-                summary="A type checker found incompatible or unresolved types.",
-                next_step="Use the reported type diagnostic to update annotations, data shapes, or call sites.",
-                evidence=self._evidence_lines(output, ["error", "type", "not assignable"]),
-            )
-        if check.category == "test":
-            return FailureTriage(
-                kind="test_failure",
-                summary="A test command failed, but Forge could not identify a narrower failure type.",
-                next_step="Inspect the first failing test and its traceback, then rerun the focused test after fixing it.",
-                evidence=self._evidence_lines(output, ["fail", "error", "traceback"]),
-            )
-        return FailureTriage(
-            kind=f"nonzero_exit_{exit_code}",
-            summary=f"The check exited with status code {exit_code}.",
-            next_step="Inspect the command output and address the first actionable error.",
-            evidence=self._evidence_lines(output, ["error", "fail", "warning"]),
-        )
 
     def _classify_failure(self, check: VerificationCheck, output: str, exit_code: int) -> str:
         return self.triage_failure(check, output, exit_code).kind
@@ -479,20 +434,8 @@ class Verifier:
             lines.extend(f"  - {line}" for line in triage.evidence)
         return "\n".join(lines)
 
-    def _evidence_lines(self, output: str, patterns: List[str], max_lines: int = 3) -> List[str]:
+    def _first_nonempty_lines(self, output: str, max_lines: int = 3) -> List[str]:
         matches = []
-        lowered_patterns = [pattern.lower() for pattern in patterns]
-        for line in output.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            lowered = stripped.lower()
-            if any(pattern in lowered for pattern in lowered_patterns):
-                matches.append(stripped)
-            if len(matches) >= max_lines:
-                return matches
-        if matches:
-            return matches
         for line in output.splitlines():
             stripped = line.strip()
             if stripped:

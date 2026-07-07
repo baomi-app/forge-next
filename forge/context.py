@@ -1,16 +1,18 @@
 import copy
-import re
 from typing import List, Dict, Any, Optional
+
+from forge.llm_decisions import LLMDecisionError
 
 class Context:
     """Manages the conversation history (context) and compiles a token-efficient 
     messages representation dynamically for LLM consumption.
     """
     
-    def __init__(self, system_prompt: Optional[str] = None):
+    def __init__(self, system_prompt: Optional[str] = None, decision_service=None):
         # Source of Truth: All raw files and command logs are preserved 100% complete
         # to ensure local checkpointing and tracing remain accurate.
         self.messages: List[Dict[str, Any]] = []
+        self.decision_service = decision_service
         if system_prompt:
             self.add_system(system_prompt)
 
@@ -82,33 +84,28 @@ class Context:
         return compiled_messages
 
     def _compile_smart_truncation(self, name: str, content: str, max_length: int = 1000) -> str:
-        """Helper to extract critical runtime exceptions / tracebacks from long outputs."""
+        """Compile long tool output through the LLM summarizer for model consumption."""
         original_len = len(content)
         if original_len <= max_length:
             return content
-            
-        # Try to locate Python Tracebacks
-        traceback_match = re.search(r"(Traceback \(most recent call last\):.*)", content, re.DOTALL)
-        if traceback_match:
-            traceback_block = traceback_match.group(1)
-            
-            # If the traceback block itself is extremely long, keep only its final 15 lines (usually contains the core exception)
-            tb_lines = traceback_block.split("\n")
-            if len(tb_lines) > 15:
-                traceback_block = "\n".join(tb_lines[-15:])
-                
-            head = content[:200]
-            trunc_msg = f"\n\n... [TRUNCATED BY CONTEXT BUILDER (ORIGINAL LENGTH: {original_len} CHARS)] ...\n\n"
-            compiled = head + trunc_msg + "[Extracted Traceback Exception]:\n" + traceback_block
-            print(f"[Context Builder] Compiled tool output '{name}' by extracting Traceback. Compressed {original_len} to {len(compiled)} chars.")
-            return compiled
-            
-        # Fallback to standard head-tail truncation if no Traceback is found
-        head = content[:400]
-        tail = content[-400:]
-        trunc_msg = f"\n\n... [TRUNCATED BY CONTEXT BUILDER (ORIGINAL LENGTH: {original_len} CHARS)] ...\n\n"
-        compiled = head + trunc_msg + tail
-        print(f"[Context Builder] Compiled tool output '{name}' via head-tail truncation. Compressed {original_len} to {len(compiled)} chars.")
+
+        if not self.decision_service:
+            return (
+                f"[Long output from tool '{name}' omitted because LLM context summarization "
+                f"is not configured. Original length: {original_len} characters.]"
+            )
+        try:
+            summary = self.decision_service.summarize_tool_output(name, content, max_length)
+        except LLMDecisionError as exc:
+            return (
+                f"[Long output from tool '{name}' could not be summarized by LLM: {exc}. "
+                f"Original length: {original_len} characters.]"
+            )
+        compiled = (
+            f"[LLM summary of long tool output '{name}'. Original length: {original_len} characters.]\n"
+            f"{summary}"
+        )
+        print(f"[Context Builder] Compiled tool output '{name}' with LLM summary. Compressed {original_len} to {len(compiled)} chars.")
         return compiled
 
     def clear(self):

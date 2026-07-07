@@ -14,7 +14,8 @@ def plan_commit(
     change_set = get_change_set(runtime=runtime)
     if not change_set:
         return "Error: Change transaction state is not available."
-    return CommitPlanner().format_plan(change_set, task_goal=task_goal)
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return CommitPlanner(decision_service=decision_service).format_plan(change_set, task_goal=task_goal)
 
 
 @tool
@@ -32,7 +33,8 @@ def commit_changes(
     change_set = get_change_set(runtime=runtime)
     if not change_set:
         return "Error: Change transaction state is not available."
-    return CommitOrchestrator().format_commit(
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return CommitOrchestrator(decision_service=decision_service).format_commit(
         change_set,
         task_goal=task_goal,
         allow_review=allow_review,

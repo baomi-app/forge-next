@@ -18,4 +18,5 @@ def review_changes(
     change_set = get_change_set(runtime=runtime)
     if not change_set:
         return "Error: Change transaction state is not available."
-    return ChangeReviewer().review(change_set, task_goal=task_goal)
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return ChangeReviewer(decision_service=decision_service).review(change_set, task_goal=task_goal)

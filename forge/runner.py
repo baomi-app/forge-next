@@ -4,6 +4,7 @@ from threading import RLock
 from forge.completion import CompletionGate
 from forge.checkpoint import CheckpointStore
 from forge.executor import ToolExecutor
+from forge.llm_decisions import LLMDecisionService
 from forge.model import BaseModel
 from forge.tools import ToolRegistry, registry
 from forge.trace import ExecutionTrace
@@ -66,13 +67,19 @@ class AgentRunner:
         self.tool_registry = tool_registry or registry
         self.system_prompt = system_prompt or build_system_prompt(self.tool_registry)
         self.workspace_dir = os.path.abspath(workspace_dir)
-        self.verifier = Verifier(workspace_dir=self.workspace_dir, test_command=test_command)
+        self.decision_service = LLMDecisionService(model)
+        self.verifier = Verifier(
+            workspace_dir=self.workspace_dir,
+            test_command=test_command,
+            decision_service=self.decision_service,
+        )
         self.checkpoint_store = CheckpointStore(self.workspace_dir)
         self.sandbox = LocalRestrictedSandbox(self.workspace_dir)
         self.session = AgentSession(
             workspace_dir=self.workspace_dir,
             system_prompt=self.system_prompt,
             test_command=self.verifier.test_command,
+            decision_service=self.decision_service,
         )
         self.completion_gate = CompletionGate(self.verifier, journal_recorder=self.session.journal_recorder)
         self.change_set = self.session.change_set
@@ -107,6 +114,7 @@ class AgentRunner:
             session=self.session,
             subagent_manager=self.subagent_manager,
             journal_recorder=self.session.journal_recorder,
+            decision_service=self.decision_service,
         )
 
     def save_checkpoint(self, filepath: str, current_iteration: int, context, trace: ExecutionTrace):

@@ -4,10 +4,21 @@ import tempfile
 import unittest
 
 from forge.issue_pr import IssuePrWorkflow
+from forge.llm_decisions import LLMIssuePrDecision
 from forge.memory import CodebaseMemory
 from forge.tool_capabilities import ToolCapabilities
 from forge.session import AgentSession
 from forge.tools import plan_issue_pr_workflow, record_pr_feedback, registry
+
+
+class FakeIssuePrService:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def extract_issue_pr_context(self, title, body, feedback, source):
+        self.calls.append((title, body, feedback, source))
+        return self.decision
 
 
 class TestIssuePrWorkflow(unittest.TestCase):
@@ -21,7 +32,14 @@ Acceptance Criteria
 - [ ] updates checkout tests
 """
 
-            output = IssuePrWorkflow().format_plan(
+            service = FakeIssuePrService(
+                LLMIssuePrDecision(
+                    acceptance_criteria=["rejects empty carts", "updates checkout tests"],
+                    feedback_items=[],
+                    recommended_flow=["inspect checkout files", "run checkout tests", "run change review"],
+                )
+            )
+            output = IssuePrWorkflow(decision_service=service).format_plan(
                 workspace_dir=workspace,
                 reference="#42",
                 title="Validate checkout",
@@ -35,16 +53,25 @@ Acceptance Criteria
         self.assertIn("rejects empty carts", output)
         self.assertIn("updates checkout tests", output)
         self.assertIn("run change review", output)
+        self.assertEqual(service.calls[0][0], "Validate checkout")
 
     def test_records_feedback_to_journal_and_memory(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._init_git_repo(workspace)
             session = AgentSession(workspace, "You are a coding agent.")
             session.start("Address PR feedback")
+            service = FakeIssuePrService(
+                LLMIssuePrDecision(
+                    acceptance_criteria=[],
+                    feedback_items=["test failure in checkout", "reviewer asked for docs"],
+                    recommended_flow=["fix feedback"],
+                )
+            )
             runtime = ToolCapabilities(
                 workspace_dir=workspace,
                 session=session,
                 journal_recorder=session.journal_recorder,
+                decision_service=service,
             )
 
             output = record_pr_feedback(
@@ -54,7 +81,7 @@ Acceptance Criteria
                 decision="needs_changes",
                 runtime=runtime,
             )
-            memory = CodebaseMemory(workspace).format(query="checkout")
+            memory = CodebaseMemory(workspace).format()
 
         self.assertIn("Decision: needs_changes", output)
         self.assertIn("test failure in checkout", output)
@@ -64,7 +91,14 @@ Acceptance Criteria
     def test_plan_tool_uses_runtime_workspace(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._init_git_repo(workspace)
-            runtime = ToolCapabilities(workspace_dir=workspace)
+            service = FakeIssuePrService(
+                LLMIssuePrDecision(
+                    acceptance_criteria=["add regression test"],
+                    feedback_items=[],
+                    recommended_flow=["inspect failure", "add regression test"],
+                )
+            )
+            runtime = ToolCapabilities(workspace_dir=workspace, decision_service=service)
 
             output = plan_issue_pr_workflow(
                 reference="https://github.com/example/repo/pull/5",

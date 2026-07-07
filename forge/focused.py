@@ -1,8 +1,10 @@
 import os
 from dataclasses import dataclass
-from typing import Iterable, List, Set
+from typing import Iterable, List
 
 from forge.changes import FileChange
+from forge.command_policy import CommandPolicy
+from forge.llm_decisions import LLMDecisionError
 from forge.project import ProjectPolicy
 from forge.verifier import VerificationCheck
 
@@ -18,44 +20,50 @@ class FocusedTestPlan:
 class FocusedTestSelector:
     """Selects focused verification commands from task-scoped file changes."""
 
-    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None):
+    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None, decision_service=None, command_policy: CommandPolicy = None):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.policy = policy or ProjectPolicy()
+        self.decision_service = decision_service
+        self.command_policy = command_policy or CommandPolicy()
 
     def select(self, changes: Iterable[FileChange]) -> FocusedTestPlan:
         """Return focused verification checks and explanatory notes."""
-        changed_paths = [change.path for change in changes]
-        checks: List[VerificationCheck] = []
-        notes: List[str] = []
-        seen_commands: Set[str] = set()
-
+        change_list = list(changes)
+        changed_paths = [change.path for change in change_list]
         if not changed_paths:
             return FocusedTestPlan(checks=[], notes=["No changed files; no focused tests suggested."])
 
-        for path in changed_paths:
-            for check in self._checks_for_path(path):
-                if check.command in seen_commands:
-                    continue
-                checks.append(check)
-                seen_commands.add(check.command)
-
-        code_paths = [path for path in changed_paths if self._is_code(path)]
-        if code_paths and not checks:
-            checks.append(
-                VerificationCheck(
-                    name="unittest discovery",
-                    command="python -m unittest discover",
-                    category="test",
-                    source="fallback for changed code files",
-                )
+        if not self.decision_service:
+            return FocusedTestPlan(
+                checks=[],
+                notes=["LLM focused test selection is not configured."],
             )
 
-        if not code_paths and not checks:
-            notes.append("Only documentation or non-code files changed; no focused tests required.")
-
-        if code_paths:
-            notes.append("Focused tests are suggestions; run broader verification before finishing larger changes.")
-
+        try:
+            decision = self.decision_service.suggest_focused_tests(
+                changed_files=[
+                    {"path": change.path, "status": change.status}
+                    for change in change_list
+                ],
+                workspace_files=self._workspace_files(),
+            )
+        except LLMDecisionError as exc:
+            return FocusedTestPlan(checks=[], notes=[f"LLM focused test selection failed: {exc}"])
+        notes = list(decision.notes)
+        checks = []
+        for check in decision.checks:
+            allowed, reason = self.command_policy.validate(check.command)
+            if not allowed:
+                notes.append(f"LLM suggested an unsafe focused command '{check.command}': {reason}")
+                continue
+            checks.append(
+                VerificationCheck(
+                    name=check.name,
+                    command=check.command,
+                    category=check.category,
+                    source=check.source,
+                )
+            )
         return FocusedTestPlan(checks=checks, notes=notes)
 
     def format_plan(self, changes: Iterable[FileChange]) -> str:
@@ -90,55 +98,14 @@ class FocusedTestSelector:
 
         return "\n".join(lines)
 
-    def _checks_for_path(self, path: str) -> List[VerificationCheck]:
-        if self.policy.is_test(path) and path.endswith(".py") and os.path.basename(path) != "__init__.py":
-            module = path[:-3].replace("/", ".")
-            return [self._unittest_module(module, f"changed test file {path}")]
-
-        if self.policy.is_example(path) and os.path.basename(path).startswith("demo_") and path.endswith(".py"):
-            return [
-                VerificationCheck(
-                    name=f"demo {os.path.basename(path)}",
-                    command=f"python {path}",
-                    category="demo",
-                    source=f"changed demo {path}",
-                )
-            ]
-
-        sibling_test = self._sibling_test_module(path)
-        if sibling_test:
-            return [self._unittest_module(sibling_test, f"sibling test for {path}")]
-
-        return []
-
-    def _sibling_test_module(self, path: str) -> str:
-        if not path.endswith(".py") or path.startswith("tests/"):
-            return ""
-
-        dirname, filename = os.path.split(path)
-        stem = filename[:-3]
-        candidates = [
-            os.path.join(dirname, f"test_{stem}.py"),
-            os.path.join(dirname, f"{stem}_test.py"),
-            os.path.join("tests", f"test_{stem}.py"),
-        ]
-        path_parts = dirname.split(os.sep) if dirname else []
-        if path_parts:
-            candidates.append(os.path.join("tests", dirname, f"test_{stem}.py"))
-            candidates.append(os.path.join("tests", *path_parts[1:], f"test_{stem}.py"))
-
-        for candidate in candidates:
-            if os.path.exists(os.path.join(self.workspace_dir, candidate)):
-                return candidate[:-3].replace("/", ".")
-        return ""
-
-    def _unittest_module(self, module: str, source: str) -> VerificationCheck:
-        return VerificationCheck(
-            name=f"unittest {module}",
-            command=f"python -m unittest {module}",
-            category="test",
-            source=source,
-        )
-
-    def _is_code(self, path: str) -> bool:
-        return self.policy.is_code(path)
+    def _workspace_files(self) -> List[str]:
+        files = []
+        if not os.path.isdir(self.workspace_dir):
+            return files
+        for root, dirs, filenames in os.walk(self.workspace_dir):
+            dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
+            for filename in sorted(filenames):
+                path = os.path.relpath(os.path.join(root, filename), self.workspace_dir)
+                if self.policy.should_track_file(path):
+                    files.append(path)
+        return files

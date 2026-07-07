@@ -1,9 +1,9 @@
 import ast
 import os
-import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Set, Tuple
 
+from forge.llm_decisions import LLMDecisionError
 from forge.project import ProjectPolicy, ProjectProfiler, RepoProfile
 
 
@@ -91,9 +91,10 @@ class RepoMap:
 class RepoMapper:
     """Builds a lightweight project map of roles, entry points, symbols, imports, and tests."""
 
-    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None):
+    def __init__(self, workspace_dir: str, policy: ProjectPolicy = None, decision_service=None):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.policy = policy or ProjectPolicy()
+        self.decision_service = decision_service
 
     def map(self, directory: str = ".", task_goal: str = "") -> RepoMap:
         target_dir = self._target_dir(directory)
@@ -139,7 +140,7 @@ class RepoMapper:
             root=os.path.relpath(target_dir, self.workspace_dir),
             profile=profile,
             files=entries,
-            suggested_files=self._suggested_files(entries, task_goal),
+            suggested_files=self._suggested_files(entries, task_goal, parse_errors),
             test_links=self._test_links(entries, modules),
             parse_errors=parse_errors,
         )
@@ -255,35 +256,35 @@ class RepoMapper:
 
         return [path for path in candidates if path in runtime_paths]
 
-    def _suggested_files(self, entries: List[RepoFile], task_goal: str) -> List[str]:
-        tokens = self._tokens(task_goal)
-        if not tokens:
-            return [entry.path for entry in entries if entry.entrypoint_reason][:5]
+    def _suggested_files(self, entries: List[RepoFile], task_goal: str, parse_errors: List[str]) -> List[str]:
+        if not task_goal.strip() or not self.decision_service:
+            return []
+        try:
+            ranked = self.decision_service.rank_repo_files(
+                task_goal=task_goal,
+                files=[self._entry_payload(entry) for entry in entries],
+                max_files=10,
+            )
+        except LLMDecisionError as exc:
+            parse_errors.append(f"LLM repo rerank failed: {exc}")
+            return []
 
-        scored = []
-        for entry in entries:
-            if self._is_low_signal_file(entry):
-                continue
-            score = self._score_entry(entry, tokens)
-            if score > 0:
-                scored.append((score, entry.path))
-        scored.sort(key=lambda item: (-item[0], item[1]))
-        return [path for _, path in scored[:10]]
+        known_paths = {entry.path for entry in entries}
+        safe = []
+        for path in ranked:
+            if path in known_paths and path not in safe:
+                safe.append(path)
+        return safe
 
-    def _is_low_signal_file(self, entry: RepoFile) -> bool:
-        return os.path.basename(entry.path) == "__init__.py" and not entry.symbols
-
-    def _score_entry(self, entry: RepoFile, tokens: Set[str]) -> int:
-        haystack = " ".join([entry.path, entry.role, entry.language, *entry.symbols]).lower()
-        score = 0
-        for token in tokens:
-            if token in os.path.basename(entry.path).lower():
-                score += 3
-            elif token in haystack:
-                score += 1
-        if entry.role == "test" and {"test", "tests", "verify", "verification"} & tokens:
-            score += 2
-        return score
+    def _entry_payload(self, entry: RepoFile) -> Dict[str, object]:
+        return {
+            "path": entry.path,
+            "role": entry.role,
+            "language": entry.language,
+            "symbols": entry.symbols[:12],
+            "local_imports": entry.local_imports[:12],
+            "entrypoint_reason": entry.entrypoint_reason,
+        }
 
     def _entrypoint_reason(self, path: str, source: str) -> str:
         basename = os.path.basename(path)
@@ -305,6 +306,3 @@ class RepoMapper:
 
     def _language(self, path: str) -> str:
         return self.policy.language(path)
-
-    def _tokens(self, text: str) -> Set[str]:
-        return {token for token in re.findall(r"[a-zA-Z0-9_]+", text.lower()) if len(token) > 2}

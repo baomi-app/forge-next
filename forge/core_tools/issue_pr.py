@@ -22,7 +22,8 @@ def plan_issue_pr_workflow(
     workspace_dir = _workspace_dir(runtime)
     if not workspace_dir:
         return "Error: Workspace state is not available."
-    return IssuePrWorkflow().format_plan(
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return IssuePrWorkflow(decision_service=decision_service).format_plan(
         workspace_dir=workspace_dir,
         reference=reference,
         title=title,
@@ -46,7 +47,8 @@ def record_pr_feedback(
     if not workspace_dir:
         return "Error: Workspace state is not available."
 
-    output = IssuePrWorkflow().format_feedback_record(
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    output = IssuePrWorkflow(decision_service=decision_service).format_feedback_record(
         reference=reference,
         feedback=feedback,
         source=source,
@@ -60,7 +62,7 @@ def record_pr_feedback(
             details=output,
         )
     if remember:
-        CodebaseMemory(workspace_dir).add(
+        CodebaseMemory(workspace_dir, decision_service=decision_service).add(
             kind="workflow",
             summary=f"{source} feedback for {reference or 'workflow'}",
             details=feedback,

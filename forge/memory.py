@@ -4,6 +4,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List
 
+from forge.llm_decisions import LLMDecisionError
+
 
 @dataclass
 class MemoryEntry:
@@ -46,9 +48,10 @@ class CodebaseMemory:
 
     VALID_KINDS = {"architecture", "convention", "decision", "testing", "workflow", "note"}
 
-    def __init__(self, workspace_dir: str, memory_path: str = ".forge/memory.json"):
+    def __init__(self, workspace_dir: str, memory_path: str = ".forge/memory.json", decision_service=None):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.memory_path = self._resolve(memory_path)
+        self.decision_service = decision_service
 
     def add(
         self,
@@ -87,10 +90,19 @@ class CodebaseMemory:
         entries = self.entries()
         normalized_query = query.strip().lower()
         if normalized_query:
-            entries = [
-                entry for entry in entries
-                if normalized_query in self._search_text(entry)
-            ]
+            if not self.decision_service:
+                return []
+            try:
+                ranked_indexes = self.decision_service.rank_memory_entries(
+                    query=query,
+                    entries=[self._entry_payload(entry) for entry in entries],
+                    max_entries=max_entries,
+                )
+            except LLMDecisionError:
+                return []
+            by_index = {entry.index: entry for entry in entries}
+            entries = [by_index[index] for index in ranked_indexes if index in by_index]
+            return entries[:max_entries]
         return entries[-max_entries:]
 
     def format(self, query: str = "", max_entries: int = 20) -> str:
@@ -145,11 +157,12 @@ class CodebaseMemory:
             if tag.strip()
         ]
 
-    def _search_text(self, entry: MemoryEntry) -> str:
-        return " ".join([
-            entry.kind,
-            entry.summary,
-            entry.details,
-            " ".join(entry.tags),
-            entry.source,
-        ]).lower()
+    def _entry_payload(self, entry: MemoryEntry) -> Dict[str, object]:
+        return {
+            "index": entry.index,
+            "kind": entry.kind,
+            "summary": entry.summary,
+            "details": entry.details,
+            "tags": entry.tags,
+            "source": entry.source,
+        }

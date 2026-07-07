@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from forge.changes import ChangeSet
+from forge.llm_decisions import LLMReviewDecision, LLMReviewFinding
 from forge.tool_capabilities import ToolCapabilities
 from forge.tools import change_summary, revert_changes, review_changes, registry
 
@@ -10,6 +11,16 @@ from forge.tools import change_summary, revert_changes, review_changes, registry
 class FakeSession:
     def __init__(self, change_set):
         self.change_set = change_set
+
+
+class FakeReviewService:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def review_changes(self, task_goal, changes, diff):
+        self.calls.append((task_goal, changes, diff))
+        return self.decision
 
 
 class TestChangeSet(unittest.TestCase):
@@ -151,30 +162,78 @@ class TestChangeSet(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             change_set = ChangeSet(workspace)
             self._write_file(workspace, ".vscode/settings.json", "{}\n")
-            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(change_set))
+            service = FakeReviewService(
+                LLMReviewDecision(
+                    status="BLOCK",
+                    findings=[
+                        LLMReviewFinding(
+                            severity="BLOCK",
+                            path=".vscode/settings.json",
+                            message="Local editor settings are unrelated to the task and should not be committed.",
+                        )
+                    ],
+                    commit_shape=["not ready: unrelated local configuration file"],
+                    suggested_message="chore: remove local editor file",
+                )
+            )
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=FakeSession(change_set),
+                decision_service=service,
+            )
 
             review = review_changes(runtime=runtime)
 
         self.assertIn("Status: BLOCK", review)
         self.assertIn(".vscode/settings.json", review)
+        self.assertEqual(len(service.calls), 1)
 
     def test_review_changes_warns_when_code_lacks_test_changes(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
-            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
+            service = FakeReviewService(
+                LLMReviewDecision(
+                    status="WARN",
+                    findings=[
+                        LLMReviewFinding(
+                            severity="WARN",
+                            message="Code changed but the diff does not include matching test evidence.",
+                        )
+                    ],
+                    commit_shape=["review needed: explain or add coverage before commit"],
+                    suggested_message="feat: update app value",
+                )
+            )
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=FakeSession(ChangeSet(workspace)),
+                decision_service=service,
+            )
             self._write_file(workspace, "app.py", "VALUE = 2\n")
 
             review = review_changes(task_goal="update app value", runtime=runtime)
 
         self.assertIn("Status: WARN", review)
-        self.assertIn("Code changed but no test files changed", review)
+        self.assertIn("matching test evidence", review)
         self.assertIn("suggested message: feat: update app value", review)
 
     def test_review_changes_passes_code_with_tests(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "VALUE = 1\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 1\n")
-            runtime = ToolCapabilities(workspace_dir=workspace, session=FakeSession(ChangeSet(workspace)))
+            service = FakeReviewService(
+                LLMReviewDecision(
+                    status="PASS",
+                    findings=[],
+                    commit_shape=["atomic candidate: runtime and test updates match one behavior change"],
+                    suggested_message="feat: update app value",
+                )
+            )
+            runtime = ToolCapabilities(
+                workspace_dir=workspace,
+                session=FakeSession(ChangeSet(workspace)),
+                decision_service=service,
+            )
             self._write_file(workspace, "app.py", "VALUE = 2\n")
             self._write_file(workspace, "test_app.py", "EXPECTED = 2\n")
 

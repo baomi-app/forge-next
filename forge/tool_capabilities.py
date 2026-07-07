@@ -14,6 +14,7 @@ class ToolCapabilities:
     subagent_manager: Optional[Any] = None
     journal_recorder: Optional[Any] = None
     policy: Optional[ProjectPolicy] = None
+    decision_service: Optional[Any] = None
 
     @property
     def change_set(self):

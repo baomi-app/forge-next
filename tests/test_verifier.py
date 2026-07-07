@@ -4,7 +4,18 @@ import sys
 import tempfile
 import unittest
 
+from forge.llm_decisions import LLMTriageDecision
 from forge.verifier import Verifier, VerificationCheck
+
+
+class FakeTriageService:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def triage_failure(self, check, output, exit_code):
+        self.calls.append((check, output, exit_code))
+        return self.decision
 
 
 class TestProjectAwareVerifier(unittest.TestCase):
@@ -82,8 +93,18 @@ class TestProjectAwareVerifier(unittest.TestCase):
         self.assertIn("verified", report)
         self.assertIn("PASS [test]", report)
 
-    def test_classifies_common_failure_types(self):
-        verifier = Verifier()
+    def test_failure_classification_uses_llm_triage_decision(self):
+        service = FakeTriageService(
+            LLMTriageDecision(
+                kind="dependency_resolution_failure",
+                summary="The test could not import a required package.",
+                root_cause="requests is unavailable in the environment.",
+                evidence=["ModuleNotFoundError: No module named 'requests'"],
+                next_step="Install requests or adjust the import path.",
+                confidence=0.93,
+            )
+        )
+        verifier = Verifier(decision_service=service)
 
         self.assertEqual(
             verifier._classify_failure(
@@ -91,31 +112,20 @@ class TestProjectAwareVerifier(unittest.TestCase):
                 "ModuleNotFoundError: No module named 'requests'",
                 1,
             ),
-            "missing_dependency",
+            "dependency_resolution_failure",
         )
-        self.assertEqual(
-            verifier._classify_failure(
-                VerificationCheck("lint", "npm run lint", "lint", "package.json"),
-                "Unexpected trailing whitespace",
-                1,
-            ),
-            "lint_failure",
-        )
-        self.assertEqual(
-            verifier._classify_failure(
-                VerificationCheck("typecheck", "npm run typecheck", "typecheck", "package.json"),
-                "Type 'string' is not assignable to type 'number'",
-                1,
-            ),
-            "typecheck_failure",
-        )
+        self.assertEqual(len(service.calls), 1)
+
+    def test_failure_classification_reports_unavailable_llm_without_rule_fallback(self):
+        verifier = Verifier()
+
         self.assertEqual(
             verifier._classify_failure(
                 VerificationCheck("unittest", "python -m unittest", "test", "Python test files"),
                 "AssertionError: 1 != 2",
                 1,
             ),
-            "assertion_failure",
+            "llm_unavailable",
         )
 
     def test_failed_unittest_report_includes_actionable_triage(self):
@@ -130,7 +140,21 @@ class TestProjectAwareVerifier(unittest.TestCase):
                 "        self.assertEqual(value(), 2)\n",
             )
 
-            passed, report = Verifier(workspace_dir=workspace, test_command=f"{sys.executable} -m unittest test_app").run_tests()
+            service = FakeTriageService(
+                LLMTriageDecision(
+                    kind="assertion_failure",
+                    summary="The implementation returns a value that does not match the test expectation.",
+                    root_cause="value() returns 1 while the test expects 2.",
+                    evidence=["AssertionError: 1 != 2"],
+                    next_step="Read the failing test expectation and update value() to return the expected result.",
+                    confidence=0.9,
+                )
+            )
+            passed, report = Verifier(
+                workspace_dir=workspace,
+                test_command=f"{sys.executable} -m unittest test_app",
+                decision_service=service,
+            ).run_tests()
 
         self.assertFalse(passed)
         self.assertIn("[Failure Triage]", report)

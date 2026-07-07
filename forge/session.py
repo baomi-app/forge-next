@@ -16,14 +16,16 @@ class AgentSession:
         system_prompt: str,
         test_command: Optional[str] = None,
         change_set: Optional[ChangeSet] = None,
+        decision_service=None,
     ):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.system_prompt = system_prompt
         self.test_command = test_command
+        self.decision_service = decision_service
         self.change_set = change_set or ChangeSet(self.workspace_dir)
         self.journal = TaskJournal()
         self.journal_recorder = JournalRecorder(self.journal)
-        self.context = Context(system_prompt=self.system_prompt)
+        self.context = Context(system_prompt=self.system_prompt, decision_service=self.decision_service)
         self.trace: Optional[ExecutionTrace] = None
         self.current_iteration = 0
 
@@ -33,7 +35,7 @@ class AgentSession:
         self.journal = TaskJournal()
         self.journal_recorder = JournalRecorder(self.journal)
         self.journal_recorder.task_started(task)
-        self.context = Context(system_prompt=self.system_prompt)
+        self.context = Context(system_prompt=self.system_prompt, decision_service=self.decision_service)
         self.context.add_user(task)
         self.trace = ExecutionTrace(task)
 
@@ -56,7 +58,7 @@ class AgentSession:
     def restore_from_dict(self, data: Dict[str, Any]) -> str:
         """Restore a session from checkpoint data and return the task."""
         task = data["task"]
-        context = Context(system_prompt=None)
+        context = Context(system_prompt=None, decision_service=self.decision_service)
         context.messages = data["messages"]
 
         trace = ExecutionTrace(task)

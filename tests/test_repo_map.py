@@ -7,6 +7,16 @@ from forge.sandbox import LocalRestrictedSandbox
 from forge.tools import inspect_repo_map, registry
 
 
+class FakeRepoRankService:
+    def __init__(self, ranked):
+        self.ranked = ranked
+        self.calls = []
+
+    def rank_repo_files(self, task_goal, files, max_files=10):
+        self.calls.append((task_goal, files, max_files))
+        return self.ranked
+
+
 class TestRepoMap(unittest.TestCase):
     def test_maps_roles_symbols_entrypoints_imports_and_test_links(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -55,8 +65,21 @@ class TestApp(unittest.TestCase):
         self.assertIn("README.md [documentation; markdown]", output)
         self.assertIn("tests/test_app.py -> pkg/app.py", output)
         self.assertIn("Suggested inspection order:", output)
-        self.assertIn("- pkg/app.py", output)
+        self.assertIn("Suggested inspection order:\n- none", output)
         self.assertNotIn("- tests/__init__.py", output.split("File roles:")[0])
+
+    def test_uses_llm_to_rank_suggested_files(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "pkg/app.py", "def value():\n    return 1\n")
+            self._write_file(workspace, "tests/test_app.py", "")
+            service = FakeRepoRankService(["tests/test_app.py", "pkg/app.py", "missing.py"])
+
+            output = RepoMapper(workspace, decision_service=service).format_map(task_goal="update app value")
+
+        suggested = output.split("File roles:")[0]
+        self.assertIn("Suggested inspection order:\n- tests/test_app.py\n- pkg/app.py", suggested)
+        self.assertEqual(service.calls[0][0], "update app value")
+        self.assertNotIn("missing.py", suggested)
 
     def test_reports_parse_errors_without_hiding_valid_files(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -69,7 +92,7 @@ class TestApp(unittest.TestCase):
         self.assertIn("Parse errors:", output)
         self.assertIn("broken.py: syntax error", output)
 
-    def test_suggests_entrypoints_when_task_goal_is_missing(self):
+    def test_missing_task_goal_does_not_use_rule_based_suggestions(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "def value():\n    return 1\n")
             self._write_file(workspace, "helper.py", "def helper():\n    return True\n")
@@ -78,7 +101,7 @@ class TestApp(unittest.TestCase):
 
         self.assertIn("Entry points:", output)
         self.assertIn("app.py (conventional Python entry file)", output)
-        self.assertIn("Suggested inspection order:\n- app.py", output)
+        self.assertIn("Suggested inspection order:\n- none", output)
 
     def test_tool_respects_sandbox_subdirectory(self):
         with tempfile.TemporaryDirectory() as workspace:

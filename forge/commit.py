@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List
 
 from forge.changes import ChangeSet, FileChange
+from forge.llm_decisions import LLMDecisionError
 from forge.project import ProjectPolicy
 
 
@@ -63,17 +64,50 @@ class CommitExecution:
 class CommitPlanner:
     """Plans atomic commit boundaries from task-scoped transaction changes."""
 
-    def __init__(self, policy: ProjectPolicy = None):
+    def __init__(self, policy: ProjectPolicy = None, decision_service=None):
         self.policy = policy or ProjectPolicy()
+        self.decision_service = decision_service
 
     def plan(self, change_set: ChangeSet, task_goal: str = "") -> CommitPlan:
         """Build a commit plan for the current task transaction."""
         changes = change_set.changes()
-        files = [self._file_decision(change) for change in changes]
-        risks = self._risks(changes, files)
-        status = self._status(files, risks)
-        message = self._message(changes, files, task_goal)
-        next_steps = self._next_steps(status, files, risks)
+        if not changes:
+            return CommitPlan(
+                status="BLOCK",
+                message="chore: no changes to commit",
+                files=[],
+                risks=["No transaction changes were found."],
+                next_steps=["Make a task-scoped change before planning a commit."],
+            )
+        if not self.decision_service:
+            return CommitPlan(
+                status="BLOCK",
+                message="chore: commit planning unavailable",
+                files=[],
+                risks=["LLM commit planning is not configured."],
+                next_steps=["Configure an LLMDecisionService, then run plan_commit again."],
+            )
+
+        try:
+            decision = self.decision_service.plan_commit(
+                task_goal=task_goal,
+                changes=changes,
+                diff=change_set.diff(max_chars=12000),
+            )
+        except LLMDecisionError as exc:
+            return CommitPlan(
+                status="BLOCK",
+                message="chore: commit planning unavailable",
+                files=[],
+                risks=[f"LLM commit planning failed: {exc}"],
+                next_steps=["Fix the LLM commit planning response, then run plan_commit again."],
+            )
+
+        files, guard_risks = self._validated_file_decisions(changes, decision.files, change_set.workspace_dir)
+        risks = [*decision.risks, *guard_risks]
+        status = "BLOCK" if guard_risks else decision.status
+        message = decision.message
+        next_steps = decision.next_steps
 
         return CommitPlan(
             status=status,
@@ -121,128 +155,49 @@ class CommitPlanner:
 
         return "\n".join(lines)
 
-    def _file_decision(self, change: FileChange) -> CommitFileDecision:
-        if self.policy.is_generated_file(change.path):
-            return CommitFileDecision(
-                path=change.path,
-                status=change.status,
-                action="exclude",
-                reason="local, generated, or temporary file",
+    def _validated_file_decisions(self, changes: List[FileChange], llm_files, workspace_dir: str):
+        by_path = {change.path: change for change in changes}
+        files: List[CommitFileDecision] = []
+        risks: List[str] = []
+        seen = set()
+        for file in llm_files:
+            path = self._normalize_relative_path(file.path)
+            if not self._is_safe_relative_path(workspace_dir, path):
+                risks.append(f"LLM suggested an unsafe commit path: {file.path}")
+                continue
+            if path not in by_path:
+                risks.append(f"LLM suggested a file outside the current transaction: {path}")
+                continue
+            if path in seen:
+                risks.append(f"LLM repeated a commit file decision: {path}")
+                continue
+            seen.add(path)
+            change = by_path[path]
+            files.append(
+                CommitFileDecision(
+                    path=path,
+                    status=change.status,
+                    action=file.action,
+                    reason=file.reason,
+                )
             )
-        return CommitFileDecision(
-            path=change.path,
-            status=change.status,
-            action="stage",
-            reason=self._category(change.path),
-        )
+        missing = [path for path in by_path if path not in seen]
+        if missing:
+            risks.extend(f"LLM did not classify changed file: {path}" for path in missing)
+        return files, risks
 
-    def _risks(self, changes: List[FileChange], files: List[CommitFileDecision]) -> List[str]:
-        risks = []
-        if not changes:
-            return ["No transaction changes were found."]
+    def _is_safe_relative_path(self, workspace_dir: str, path: str) -> bool:
+        if not path or os.path.isabs(path):
+            return False
+        root = os.path.abspath(workspace_dir)
+        full_path = os.path.abspath(os.path.join(root, path))
+        return os.path.commonpath([root, full_path]) == root
 
-        if any(file.action == "exclude" for file in files):
-            risks.append("Excluded files must be removed or left unstaged before committing.")
-
-        staged = [file for file in files if file.action == "stage"]
-        if not staged:
-            risks.append("No committable files remain after exclusions.")
-            return risks
-
-        code = [file for file in staged if self._is_code(file.path)]
-        tests = [file for file in staged if self._is_test(file.path)]
-        docs = [file for file in staged if self._is_doc(file.path)]
-        examples = [file for file in staged if self._is_example(file.path)]
-
-        if code and not tests:
-            risks.append("Code changes have no staged test changes; verify existing coverage is enough.")
-        if code and not (docs or examples):
-            risks.append("Runtime behavior changed without staged docs or examples.")
-        if len(staged) > 12:
-            risks.append("Large staging set; confirm this is still one atomic feature or fix.")
-
-        categories = {self._category(file.path) for file in staged}
-        if "runtime code" in categories and "project configuration" in categories:
-            risks.append("Runtime code and project configuration changed together; confirm they serve one goal.")
-        if "other" in categories and len(categories) > 2:
-            risks.append("Mixed uncategorized files with other changes; review the commit boundary.")
-
-        return risks
-
-    def _status(self, files: List[CommitFileDecision], risks: List[str]) -> str:
-        if not files:
-            return "BLOCK"
-        if any("No committable files" in risk or "No transaction changes" in risk for risk in risks):
-            return "BLOCK"
-        if any(file.action == "exclude" for file in files):
-            return "BLOCK"
-        if risks:
-            return "REVIEW"
-        return "READY"
-
-    def _next_steps(self, status: str, files: List[CommitFileDecision], risks: List[str]) -> List[str]:
-        if status == "BLOCK":
-            steps = []
-            if any(file.action == "exclude" for file in files):
-                steps.append("Remove or leave excluded files unstaged before committing.")
-            if risks:
-                steps.append("Resolve blocking risks, then run plan_commit again.")
-            if not steps:
-                steps.append("Make a task-scoped change before planning a commit.")
-            return steps
-        if status == "REVIEW":
-            return [
-                "Resolve or explicitly accept the listed risks.",
-                "Run focused and project verification before staging.",
-                "Stage only the files listed in the staging section.",
-            ]
-        return [
-            "Run focused and project verification if not already done.",
-            "Stage the listed files.",
-            "Commit with the suggested message or a more specific equivalent.",
-        ]
-
-    def _message(self, changes: List[FileChange], files: List[CommitFileDecision], task_goal: str) -> str:
-        staged = [file for file in files if file.action == "stage"]
-        if task_goal:
-            return f"{self._commit_type(staged)}: {self._summary(task_goal)}"
-        if staged and all(self._is_doc(file.path) for file in staged):
-            return "docs: update documentation"
-        if staged and any(file.status == "deleted" for file in staged):
-            return "fix: remove obsolete code"
-        if staged and any(self._is_code(file.path) for file in staged):
-            return "feat: update coding agent behavior"
-        if changes:
-            return "chore: update project files"
-        return "chore: no changes to commit"
-
-    def _commit_type(self, files: List[CommitFileDecision]) -> str:
-        if files and all(self._is_doc(file.path) for file in files):
-            return "docs"
-        if files and any(file.status == "deleted" for file in files):
-            return "fix"
-        if files and not any(self._is_code(file.path) for file in files):
-            return "chore"
-        return "feat"
-
-    def _summary(self, task_goal: str) -> str:
-        summary = task_goal.strip().splitlines()[0].strip().rstrip(".")
-        return summary[:72] if summary else "update project"
-
-    def _category(self, path: str) -> str:
-        return self.policy.commit_category(path)
-
-    def _is_code(self, path: str) -> bool:
-        return self.policy.is_code(path)
-
-    def _is_test(self, path: str) -> bool:
-        return self.policy.is_test(path)
-
-    def _is_doc(self, path: str) -> bool:
-        return self.policy.is_doc(path)
-
-    def _is_example(self, path: str) -> bool:
-        return self.policy.is_example(path)
+    def _normalize_relative_path(self, path: str) -> str:
+        normalized = path.strip()
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        return normalized
 
 
 class GitStateInspector:
@@ -311,8 +266,8 @@ class GitStateInspector:
 class CommitOrchestrator:
     """Stages planned files, creates one commit, and verifies the result."""
 
-    def __init__(self):
-        self.planner = CommitPlanner()
+    def __init__(self, decision_service=None):
+        self.planner = CommitPlanner(decision_service=decision_service)
         self.git = GitStateInspector()
 
     def commit(

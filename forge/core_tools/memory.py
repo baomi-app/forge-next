@@ -8,7 +8,8 @@ def _memory(runtime: Optional[Any]) -> Optional[CodebaseMemory]:
     workspace_dir = getattr(runtime, "workspace_dir", None) if runtime else None
     if not workspace_dir:
         return None
-    return CodebaseMemory(workspace_dir)
+    decision_service = getattr(runtime, "decision_service", None) if runtime else None
+    return CodebaseMemory(workspace_dir, decision_service=decision_service)
 
 
 @tool

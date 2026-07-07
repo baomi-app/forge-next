@@ -32,7 +32,8 @@ def inspect_repo_map(
             rel_directory = "."
 
         policy = runtime.project_policy() if runtime else None
-        return RepoMapper(workspace_dir, policy=policy).format_map(
+        decision_service = getattr(runtime, "decision_service", None) if runtime else None
+        return RepoMapper(workspace_dir, policy=policy, decision_service=decision_service).format_map(
             directory=rel_directory,
             task_goal=task_goal,
             max_files=max_files,
