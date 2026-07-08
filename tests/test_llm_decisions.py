@@ -23,6 +23,7 @@ class TestLLMDecisionService(unittest.TestCase):
     def test_triage_failure_parses_structured_json(self):
         model = ScriptedDecisionModel([
             json.dumps({
+                "schema_version": 1,
                 "kind": "assertion_failure",
                 "summary": "The behavior differs from the test expectation.",
                 "root_cause": "value() returns 1 while the test expects 2.",
@@ -47,6 +48,7 @@ class TestLLMDecisionService(unittest.TestCase):
         model = ScriptedDecisionModel([
             "not json",
             json.dumps({
+                "schema_version": 1,
                 "status": "WARN",
                 "findings": [
                     {
@@ -74,6 +76,7 @@ class TestLLMDecisionService(unittest.TestCase):
     def test_rejects_invalid_schema_without_rule_fallback(self):
         model = ScriptedDecisionModel([
             json.dumps({
+                "schema_version": 1,
                 "kind": "assertion_failure",
                 "summary": "Missing required fields.",
                 "evidence": [],
@@ -89,6 +92,38 @@ class TestLLMDecisionService(unittest.TestCase):
                 "AssertionError",
                 1,
             )
+
+    def test_includes_decision_metadata_and_versioned_schema(self):
+        model = ScriptedDecisionModel([
+            json.dumps({
+                "schema_version": 1,
+                "entry_indexes": [2, 0],
+            })
+        ])
+        service = LLMDecisionService(model)
+
+        decision = service.rank_memory_entries(
+            query="billing",
+            entries=[{"index": 0, "summary": "app"}, {"index": 1, "summary": "billing"}],
+            max_entries=2,
+        )
+
+        request = json.loads(model.calls[0][0][1]["content"])
+        self.assertEqual(decision, [2, 0])
+        self.assertEqual(request["decision"]["name"], "rank_memory_entries")
+        self.assertEqual(request["decision"]["schema_version"], 1)
+        self.assertEqual(request["schema"]["schema_version"], 1)
+
+    def test_rejects_missing_schema_version(self):
+        model = ScriptedDecisionModel([
+            json.dumps({
+                "summary": "A compact summary.",
+            })
+        ])
+        service = LLMDecisionService(model, max_retries=0)
+
+        with self.assertRaises(LLMDecisionError):
+            service.summarize_tool_output("pytest", "failed", 200)
 
 
 if __name__ == "__main__":

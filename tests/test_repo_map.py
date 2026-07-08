@@ -2,19 +2,41 @@ import os
 import tempfile
 import unittest
 
+from forge.llm_decisions import (
+    LLMProjectProfileDecision,
+    LLMRepoAnnotationDecision,
+    LLMRepoFileAnnotationDecision,
+)
 from forge.repo_map import RepoMapper
 from forge.sandbox import LocalRestrictedSandbox
 from forge.tools import inspect_repo_map, registry
 
 
-class FakeRepoRankService:
-    def __init__(self, ranked):
-        self.ranked = ranked
+class FakeRepoService:
+    def __init__(self, ranked=None, annotations=None, profile=None):
+        self.ranked = ranked or []
+        self.annotations = annotations or []
+        self.profile = profile or LLMProjectProfileDecision(
+            languages=["python"],
+            config_files=[],
+            source_files=[annotation.path for annotation in self.annotations if annotation.role == "runtime"],
+            test_files=[annotation.path for annotation in self.annotations if annotation.role == "test"],
+            entrypoints=[annotation.path for annotation in self.annotations if annotation.entrypoint_reason],
+            notes=[],
+        )
         self.calls = []
 
     def rank_repo_files(self, task_goal, files, max_files=10):
         self.calls.append((task_goal, files, max_files))
         return self.ranked
+
+    def annotate_repo_files(self, files):
+        self.calls.append(("annotate", files))
+        return LLMRepoAnnotationDecision(self.annotations)
+
+    def profile_repository(self, workspace_files):
+        self.calls.append(("profile", workspace_files))
+        return self.profile
 
 
 class TestRepoMap(unittest.TestCase):
@@ -56,7 +78,16 @@ class TestApp(unittest.TestCase):
             self._write_file(workspace, "tests/__init__.py", "")
             self._write_file(workspace, "README.md", "# Demo\n")
 
-            output = RepoMapper(workspace).format_map(task_goal="update app value tests")
+            service = FakeRepoService(
+                annotations=[
+                    LLMRepoFileAnnotationDecision("README.md", "documentation", "markdown"),
+                    LLMRepoFileAnnotationDecision("pkg/app.py", "runtime", "python"),
+                    LLMRepoFileAnnotationDecision("pkg/cli.py", "runtime", "python", "__main__ guard"),
+                    LLMRepoFileAnnotationDecision("tests/__init__.py", "test", "python"),
+                    LLMRepoFileAnnotationDecision("tests/test_app.py", "test", "python"),
+                ]
+            )
+            output = RepoMapper(workspace, decision_service=service).format_map(task_goal="update app value tests")
 
         self.assertIn("Repository map:", output)
         self.assertIn("pkg/cli.py (__main__ guard)", output)
@@ -72,21 +103,34 @@ class TestApp(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "pkg/app.py", "def value():\n    return 1\n")
             self._write_file(workspace, "tests/test_app.py", "")
-            service = FakeRepoRankService(["tests/test_app.py", "pkg/app.py", "missing.py"])
+            service = FakeRepoService(
+                ranked=["tests/test_app.py", "pkg/app.py", "missing.py"],
+                annotations=[
+                    LLMRepoFileAnnotationDecision("pkg/app.py", "runtime", "python"),
+                    LLMRepoFileAnnotationDecision("tests/test_app.py", "test", "python"),
+                ],
+            )
 
             output = RepoMapper(workspace, decision_service=service).format_map(task_goal="update app value")
 
         suggested = output.split("File roles:")[0]
         self.assertIn("Suggested inspection order:\n- tests/test_app.py\n- pkg/app.py", suggested)
-        self.assertEqual(service.calls[0][0], "update app value")
+        rank_calls = [call for call in service.calls if call[0] == "update app value"]
+        self.assertEqual(rank_calls[0][2], 10)
         self.assertNotIn("missing.py", suggested)
 
     def test_reports_parse_errors_without_hiding_valid_files(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "good.py", "def ok():\n    return True\n")
             self._write_file(workspace, "broken.py", "def nope(:\n    pass\n")
+            service = FakeRepoService(
+                annotations=[
+                    LLMRepoFileAnnotationDecision("broken.py", "runtime", "python"),
+                    LLMRepoFileAnnotationDecision("good.py", "runtime", "python"),
+                ]
+            )
 
-            output = RepoMapper(workspace).format_map()
+            output = RepoMapper(workspace, decision_service=service).format_map()
 
         self.assertIn("good.py [runtime; python] symbols: def ok", output)
         self.assertIn("Parse errors:", output)
@@ -96,11 +140,17 @@ class TestApp(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "def value():\n    return 1\n")
             self._write_file(workspace, "helper.py", "def helper():\n    return True\n")
+            service = FakeRepoService(
+                annotations=[
+                    LLMRepoFileAnnotationDecision("app.py", "runtime", "python", "LLM selected app entrypoint"),
+                    LLMRepoFileAnnotationDecision("helper.py", "runtime", "python"),
+                ]
+            )
 
-            output = RepoMapper(workspace).format_map()
+            output = RepoMapper(workspace, decision_service=service).format_map()
 
         self.assertIn("Entry points:", output)
-        self.assertIn("app.py (conventional Python entry file)", output)
+        self.assertIn("app.py (LLM selected app entrypoint)", output)
         self.assertIn("Suggested inspection order:\n- none", output)
 
     def test_tool_respects_sandbox_subdirectory(self):
@@ -111,7 +161,7 @@ class TestApp(unittest.TestCase):
 
             output = inspect_repo_map(directory="pkg", sandbox=sandbox)
 
-        self.assertIn("module.py [runtime; python]", output)
+        self.assertIn("module.py [unknown; unknown]", output)
         self.assertNotIn("outside.py", output)
 
     def test_is_registered_as_core_tool(self):

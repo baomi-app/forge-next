@@ -1,4 +1,3 @@
-import json
 import os
 import shlex
 import subprocess
@@ -7,8 +6,9 @@ import time
 from dataclasses import dataclass
 from typing import Tuple, List, Optional, Dict, Any
 
+from forge.command_policy import CommandPolicy
 from forge.llm_decisions import LLMDecisionError
-from forge.project import ProjectPolicy, ProjectProfiler
+from forge.project import ProjectFileCollector, ProjectPolicy
 
 
 @dataclass
@@ -72,6 +72,7 @@ class Verifier:
         self.python_executable = shlex.quote(sys.executable)
         self.policy = policy or ProjectPolicy()
         self.decision_service = decision_service
+        self.command_policy = CommandPolicy()
 
     def verify_syntax(self) -> Tuple[bool, List[str]]:
         """Scans all Python files recursively in the workspace to verify syntax compiles correctly.
@@ -114,13 +115,9 @@ class Verifier:
         Explicit test commands take precedence. Otherwise Forge looks for common
         project files and lightweight test conventions.
         """
-        languages = []
-        notes = []
-        checks = []
-
         if self.test_command:
             return ProjectProfile(
-                languages=self._detect_languages(),
+                languages=[],
                 checks=[
                     VerificationCheck(
                         name="configured test command",
@@ -132,27 +129,51 @@ class Verifier:
                 notes=["Using the explicitly configured verification command."]
             )
 
-        languages = self._detect_languages()
         if not self.auto_discover:
             return ProjectProfile(
-                languages=languages,
+                languages=[],
                 checks=[],
                 notes=["Automatic verification discovery is disabled."]
             )
 
-        if "python" in languages:
-            checks.extend(self._discover_python_checks(notes))
-        if "node" in languages:
-            checks.extend(self._discover_node_checks(notes))
-        if "go" in languages:
-            checks.append(VerificationCheck("go tests", "go test ./...", "test", "go.mod"))
-        if "rust" in languages:
-            checks.append(VerificationCheck("cargo tests", "cargo test", "test", "Cargo.toml"))
+        if not self.decision_service:
+            return ProjectProfile(
+                languages=[],
+                checks=[],
+                notes=["LLM project verification planning is not configured."],
+            )
+
+        try:
+            decision = self.decision_service.plan_project_verification(
+                ProjectFileCollector(self.workspace_dir, policy=self.policy).facts()
+            )
+        except LLMDecisionError as exc:
+            return ProjectProfile(
+                languages=[],
+                checks=[],
+                notes=[f"LLM project verification planning failed: {exc}"],
+            )
+
+        notes = list(decision.notes)
+        checks = []
+        for check in decision.checks:
+            allowed, reason = self.command_policy.validate(check.command)
+            if not allowed:
+                notes.append(f"LLM suggested an unsafe project verification command '{check.command}': {reason}")
+                continue
+            checks.append(
+                VerificationCheck(
+                    name=check.name,
+                    command=check.command,
+                    category=check.category,
+                    source=check.source,
+                )
+            )
 
         if not checks:
-            notes.append("No runnable project checks were discovered.")
+            notes.append("No runnable project checks were selected by LLM.")
 
-        return ProjectProfile(languages=languages, checks=checks, notes=notes)
+        return ProjectProfile(languages=decision.languages, checks=checks, notes=notes)
 
     def run_tests(self) -> Tuple[bool, str]:
         """Runs the registered or auto-discovered project verification commands.
@@ -305,56 +326,6 @@ class Verifier:
         print("[Verifier] Status: PASSED")
         return True, "[VERIFIER PASSED] All compilation and project checks passed successfully.\n\n" + test_output
 
-    def _detect_languages(self) -> List[str]:
-        """Detect likely project languages from known files and extensions."""
-        return ProjectProfiler(self.workspace_dir, policy=self.policy).profile().languages
-
-    def _discover_python_checks(self, notes: List[str]) -> List[VerificationCheck]:
-        """Find Python test commands that are likely to work in the current environment."""
-        checks = []
-        has_tests = self._has_python_tests()
-        has_pytest_config = self._has_any_file({"pytest.ini", "tox.ini"}) or self._pyproject_mentions("pytest")
-
-        if has_pytest_config and self._python_module_available("pytest"):
-            checks.append(VerificationCheck("pytest suite", f"{self.python_executable} -m pytest", "test", "pytest configuration"))
-        elif has_pytest_config:
-            notes.append("Detected pytest configuration, but pytest is not importable in the current environment.")
-
-        if has_tests and not checks:
-            checks.append(VerificationCheck("unittest discovery", f"{self.python_executable} -m unittest discover", "test", "Python test files"))
-
-        return checks
-
-    def _discover_node_checks(self, notes: List[str]) -> List[VerificationCheck]:
-        """Find Node package scripts without assuming a particular package manager."""
-        package_json = os.path.join(self.workspace_dir, "package.json")
-        if not os.path.exists(package_json):
-            return []
-
-        try:
-            with open(package_json, "r", encoding="utf-8") as f:
-                package_data: Dict[str, Any] = json.load(f)
-        except Exception as e:
-            notes.append(f"Could not read package.json for script discovery: {str(e)}")
-            return []
-
-        scripts = package_data.get("scripts", {})
-        if not isinstance(scripts, dict):
-            return []
-
-        manager = self._node_package_manager()
-        candidates = [
-            ("lint", "lint", "lint"),
-            ("typecheck", "typecheck", "typecheck"),
-            ("test", "test", "test"),
-        ]
-        checks = []
-        for script_name, category, display_name in candidates:
-            if script_name in scripts:
-                command = f"{manager} run {script_name}" if manager != "npm" or script_name != "test" else "npm test"
-                checks.append(VerificationCheck(f"node {display_name}", command, category, f"package.json scripts.{script_name}"))
-        return checks
-
     def _format_project_summary(self, profile: ProjectProfile) -> str:
         languages = ", ".join(profile.languages) if profile.languages else "unknown"
         notes = "\n".join(f"- {note}" for note in profile.notes)
@@ -443,54 +414,3 @@ class Verifier:
             if len(matches) >= max_lines:
                 break
         return matches
-
-    def _node_package_manager(self) -> str:
-        if os.path.exists(os.path.join(self.workspace_dir, "pnpm-lock.yaml")):
-            return "pnpm"
-        if os.path.exists(os.path.join(self.workspace_dir, "yarn.lock")):
-            return "yarn"
-        return "npm"
-
-    def _has_any_file(self, filenames: set) -> bool:
-        return any(os.path.exists(os.path.join(self.workspace_dir, name)) for name in filenames)
-
-    def _has_file_with_suffix(self, suffix: str) -> bool:
-        for root, dirs, files in os.walk(self.workspace_dir):
-            dirs[:] = [d for d in dirs if self.policy.should_descend_dir(d)]
-            if any(
-                file.endswith(suffix)
-                and self.policy.should_track_file(os.path.relpath(os.path.join(root, file), self.workspace_dir))
-                for file in files
-            ):
-                return True
-        return False
-
-    def _has_python_tests(self) -> bool:
-        for root, dirs, files in os.walk(self.workspace_dir):
-            dirs[:] = [d for d in dirs if self.policy.should_descend_dir(d)]
-            for file in files:
-                path = os.path.relpath(os.path.join(root, file), self.workspace_dir)
-                if not self.policy.should_track_file(path):
-                    continue
-                if self.policy.is_test(path) and file != "__init__.py" and file.endswith(".py"):
-                    return True
-        return False
-
-    def _pyproject_mentions(self, text: str) -> bool:
-        pyproject = os.path.join(self.workspace_dir, "pyproject.toml")
-        if not os.path.exists(pyproject):
-            return False
-        try:
-            with open(pyproject, "r", encoding="utf-8") as f:
-                return text in f.read()
-        except Exception:
-            return False
-
-    def _python_module_available(self, module_name: str) -> bool:
-        result = subprocess.run(
-            [sys.executable, "-c", f"import {module_name}"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        return result.returncode == 0

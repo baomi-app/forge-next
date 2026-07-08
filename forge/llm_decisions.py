@@ -14,11 +14,18 @@ from forge.llm_decision_specs import (
     LLMFocusedTestsDecision,
     LLMIssuePrDecision,
     LLMPlannedEditDecision,
+    LLMProjectProfileDecision,
+    LLMProjectVerificationPlanDecision,
+    LLMRepoAnnotationDecision,
+    LLMRepoFileAnnotationDecision,
     LLMReviewDecision,
     LLMReviewFinding,
     LLMTriageDecision,
     LLMVerificationCommandDecision,
     MemoryRankSpec,
+    ProjectProfileSpec,
+    ProjectVerificationSpec,
+    RepoAnnotationSpec,
     RepoRankSpec,
     ReviewSpec,
     ToolOutputSummarySpec,
@@ -78,6 +85,13 @@ class LLMDecisionValidator:
         if confidence < 0 or confidence > 1:
             self.fail("Field 'confidence' must be a number between 0 and 1.")
         return confidence
+
+    def schema_version(self, value: Any, expected: int) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            self.fail(f"Field 'schema_version' must be integer {expected}.")
+        if value != expected:
+            self.fail(f"Field 'schema_version' must be {expected}.")
+        return value
 
 
 class LLMDecisionService:
@@ -158,6 +172,18 @@ class LLMDecisionService:
         }
         return self.decide(FocusedTestsSpec, payload)
 
+    def profile_repository(self, workspace_files: List[Dict[str, Any]]) -> LLMProjectProfileDecision:
+        payload = {"workspace_files": workspace_files[:400]}
+        return self.decide(ProjectProfileSpec, payload)
+
+    def annotate_repo_files(self, files: List[Dict[str, Any]]) -> LLMRepoAnnotationDecision:
+        payload = {"files": files[:400]}
+        return self.decide(RepoAnnotationSpec, payload)
+
+    def plan_project_verification(self, workspace_files: List[Dict[str, Any]]) -> LLMProjectVerificationPlanDecision:
+        payload = {"workspace_files": workspace_files[:400]}
+        return self.decide(ProjectVerificationSpec, payload)
+
     def plan_commit(
         self,
         task_goal: str,
@@ -208,17 +234,25 @@ class LLMDecisionService:
     def decide(self, spec: Any, payload: Dict[str, Any]) -> Any:
         if not self.model:
             raise LLMDecisionError("LLM decision service requires a model.")
-        data = self._ask_json(spec.system_prompt, payload, spec.schema)
+        schema = spec.schema_with_version() if hasattr(spec, "schema_with_version") else spec.schema
+        data = self._ask_json(spec, payload, schema)
         return spec.parse(data, self.validator)
 
-    def _ask_json(self, system: str, payload: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    def _ask_json(self, spec: Any, payload: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
         last_error = ""
         messages = [
-            {"role": "system", "content": system},
+            {"role": "system", "content": spec.system_prompt},
             {
                 "role": "user",
                 "content": json.dumps(
-                    {"schema": schema, "input": payload},
+                    {
+                        "decision": {
+                            "name": getattr(spec, "name", spec.__name__),
+                            "schema_version": getattr(spec, "version", None),
+                        },
+                        "schema": schema,
+                        "input": payload,
+                    },
                     ensure_ascii=False,
                     indent=2,
                 ),
@@ -235,7 +269,7 @@ class LLMDecisionService:
                 messages.append({"role": "assistant", "content": content or ""})
                 messages.append({
                     "role": "user",
-                    "content": "The previous response was invalid. Return one valid JSON object only.",
+                    "content": "The previous response was invalid. Return one valid JSON object only, including the required schema_version.",
                 })
                 if attempt >= self.max_retries:
                     break

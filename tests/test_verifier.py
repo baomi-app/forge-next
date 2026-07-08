@@ -4,18 +4,27 @@ import sys
 import tempfile
 import unittest
 
-from forge.llm_decisions import LLMTriageDecision
+from forge.llm_decisions import (
+    LLMProjectVerificationPlanDecision,
+    LLMTriageDecision,
+    LLMVerificationCommandDecision,
+)
 from forge.verifier import Verifier, VerificationCheck
 
 
-class FakeTriageService:
-    def __init__(self, decision):
-        self.decision = decision
+class FakeVerifierService:
+    def __init__(self, triage=None, verification_plan=None):
+        self.triage = triage
+        self.verification_plan = verification_plan
         self.calls = []
 
     def triage_failure(self, check, output, exit_code):
         self.calls.append((check, output, exit_code))
-        return self.decision
+        return self.triage
+
+    def plan_project_verification(self, workspace_files):
+        self.calls.append(("plan_project_verification", workspace_files))
+        return self.verification_plan
 
 
 class TestProjectAwareVerifier(unittest.TestCase):
@@ -30,7 +39,7 @@ class TestProjectAwareVerifier(unittest.TestCase):
         self.assertEqual(profile.checks[0].source, "runner configuration")
         self.assertIn("explicitly configured", profile.notes[0])
 
-    def test_discovers_python_unittest_files(self):
+    def test_uses_llm_project_verification_plan(self):
         with tempfile.TemporaryDirectory() as workspace:
             self._write_file(workspace, "app.py", "def ok():\n    return True\n")
             self._write_file(
@@ -38,49 +47,67 @@ class TestProjectAwareVerifier(unittest.TestCase):
                 "test_app.py",
                 "import unittest\n\nclass TestApp(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)\n",
             )
+            service = FakeVerifierService(
+                verification_plan=LLMProjectVerificationPlanDecision(
+                    languages=["python"],
+                    checks=[
+                        LLMVerificationCommandDecision(
+                            name="unittest discovery",
+                            command=f"{sys.executable} -m unittest discover",
+                            category="test",
+                            source="LLM selected Python unit tests.",
+                        )
+                    ],
+                    notes=["LLM verification plan."],
+                )
+            )
 
-            profile = Verifier(workspace_dir=workspace).discover_project()
+            profile = Verifier(workspace_dir=workspace, decision_service=service).discover_project()
 
         self.assertEqual(profile.languages, ["python"])
         self.assertEqual(len(profile.checks), 1)
         self.assertEqual(profile.checks[0].name, "unittest discovery")
         self.assertIn("-m unittest discover", profile.checks[0].command)
+        self.assertEqual(service.calls[0][0], "plan_project_verification")
 
-    def test_discovers_node_package_scripts(self):
+    def test_reports_missing_llm_for_auto_discovery_without_rule_fallback(self):
         with tempfile.TemporaryDirectory() as workspace:
-            self._write_file(
-                workspace,
-                "package.json",
-                json.dumps(
-                    {
-                        "scripts": {
-                            "lint": "eslint .",
-                            "typecheck": "tsc --noEmit",
-                            "test": "node test.js",
-                        }
-                    }
-                ),
+            self._write_file(workspace, "package.json", json.dumps({"scripts": {"test": "node test.js"}}))
+
+            profile = Verifier(workspace_dir=workspace).discover_project()
+
+        self.assertEqual(profile.languages, [])
+        self.assertEqual(profile.checks, [])
+        self.assertIn("LLM project verification planning is not configured", profile.notes[0])
+
+    def test_filters_unsafe_llm_project_verification_commands(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "def ok():\n    return True\n")
+            service = FakeVerifierService(
+                verification_plan=LLMProjectVerificationPlanDecision(
+                    languages=["python"],
+                    checks=[
+                        LLMVerificationCommandDecision(
+                            name="safe",
+                            command=f"{sys.executable} -m unittest discover",
+                            category="test",
+                            source="LLM selected Python tests.",
+                        ),
+                        LLMVerificationCommandDecision(
+                            name="unsafe",
+                            command="python -m unittest; rm -rf .",
+                            category="test",
+                            source="Should be filtered.",
+                        ),
+                    ],
+                    notes=[],
+                )
             )
 
-            profile = Verifier(workspace_dir=workspace).discover_project()
+            profile = Verifier(workspace_dir=workspace, decision_service=service).discover_project()
 
-        commands = [check.command for check in profile.checks]
-        categories = [check.category for check in profile.checks]
-        self.assertEqual(profile.languages, ["node"])
-        self.assertEqual(commands, ["npm run lint", "npm run typecheck", "npm test"])
-        self.assertEqual(categories, ["lint", "typecheck", "test"])
-
-    def test_discovers_go_and_rust_checks(self):
-        with tempfile.TemporaryDirectory() as workspace:
-            self._write_file(workspace, "go.mod", "module example.com/demo\n")
-            self._write_file(workspace, "Cargo.toml", "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n")
-
-            profile = Verifier(workspace_dir=workspace).discover_project()
-
-        commands = {check.command for check in profile.checks}
-        self.assertIn("go", profile.languages)
-        self.assertIn("rust", profile.languages)
-        self.assertEqual(commands, {"go test ./...", "cargo test"})
+        self.assertEqual([check.name for check in profile.checks], ["safe"])
+        self.assertTrue(any("unsafe project verification command" in note for note in profile.notes))
 
     def test_run_tests_returns_structured_report_for_explicit_command(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -94,8 +121,8 @@ class TestProjectAwareVerifier(unittest.TestCase):
         self.assertIn("PASS [test]", report)
 
     def test_failure_classification_uses_llm_triage_decision(self):
-        service = FakeTriageService(
-            LLMTriageDecision(
+        service = FakeVerifierService(
+            triage=LLMTriageDecision(
                 kind="dependency_resolution_failure",
                 summary="The test could not import a required package.",
                 root_cause="requests is unavailable in the environment.",
@@ -140,8 +167,8 @@ class TestProjectAwareVerifier(unittest.TestCase):
                 "        self.assertEqual(value(), 2)\n",
             )
 
-            service = FakeTriageService(
-                LLMTriageDecision(
+            service = FakeVerifierService(
+                triage=LLMTriageDecision(
                     kind="assertion_failure",
                     summary="The implementation returns a value that does not match the test expectation.",
                     root_cause="value() returns 1 while the test expects 2.",

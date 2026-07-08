@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Optional
 
 @dataclass
 class RepoProfile:
-    """Detected repository traits used by agent capabilities."""
+    """Repository traits returned by LLM repository profiling."""
 
     root: str
     languages: List[str]
@@ -18,7 +18,7 @@ class RepoProfile:
 
 
 class ProjectPolicy:
-    """Shared project rules for file classification, exclusions, and language hints."""
+    """Workspace safety policy for file traversal and tracking boundaries."""
 
     exclude_dirs = {".git", "__pycache__", ".venv", ".agents", "node_modules", ".gemini"}
     checkpoint_file_patterns = {"checkpoint.json", "*_checkpoint.json"}
@@ -35,49 +35,6 @@ class ProjectPolicy:
         "mock_trace.json",
         "verifier_trace.json",
         "temp_*/*",
-    }
-    test_file_patterns = {
-        "test_*.py",
-        "*_test.py",
-        "tests/*",
-        "*/tests/*",
-    }
-    doc_file_patterns = {
-        "README.md",
-        "VERSION.md",
-        "AGENTS.md",
-        "docs/*",
-        "examples/*",
-    }
-    example_file_patterns = {"examples/*"}
-    config_files = {
-        "AGENTS.md",
-        "Cargo.toml",
-        "go.mod",
-        "package.json",
-        "pyproject.toml",
-        "requirements.txt",
-        "baomi.json",
-    }
-    code_suffixes = (".py", ".js", ".ts", ".tsx", ".go", ".rs")
-    doc_suffixes = (".md", ".rst", ".txt")
-    language_by_suffix = {
-        ".go": "go",
-        ".js": "javascript",
-        ".json": "json",
-        ".md": "markdown",
-        ".py": "python",
-        ".rs": "rust",
-        ".toml": "toml",
-        ".ts": "typescript",
-        ".tsx": "typescript-react",
-        ".txt": "text",
-    }
-    project_language_markers = {
-        "python": ("pyproject.toml", "requirements.txt", "setup.py"),
-        "node": ("package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"),
-        "go": ("go.mod",),
-        "rust": ("Cargo.toml",),
     }
 
     def __init__(
@@ -96,47 +53,6 @@ class ProjectPolicy:
 
     def is_generated_file(self, path: str) -> bool:
         return self.matches(path, self.generated_file_patterns)
-
-    def is_test(self, path: str) -> bool:
-        return self.matches(path, self.test_file_patterns)
-
-    def is_doc(self, path: str) -> bool:
-        return self.matches(path, self.doc_file_patterns) or path.endswith(self.doc_suffixes)
-
-    def is_example(self, path: str) -> bool:
-        return self.matches(path, self.example_file_patterns)
-
-    def is_code(self, path: str) -> bool:
-        return path.endswith(self.code_suffixes)
-
-    def is_config(self, path: str) -> bool:
-        return os.path.basename(path) in self.config_files
-
-    def role(self, path: str) -> str:
-        if self.is_test(path):
-            return "test"
-        if self.is_example(path):
-            return "example"
-        if self.is_doc(path):
-            return "documentation"
-        if self.is_config(path):
-            return "config"
-        if self.is_code(path):
-            return "runtime"
-        return "other"
-
-    def commit_category(self, path: str) -> str:
-        role = self.role(path)
-        if role == "runtime":
-            return "runtime code"
-        if role == "config":
-            return "project configuration"
-        if role == "documentation":
-            return "documentation"
-        return role
-
-    def language(self, path: str) -> str:
-        return self.language_by_suffix.get(os.path.splitext(path)[1], "unknown")
 
     def matches(self, path: str, patterns: Iterable[str]) -> bool:
         basename = os.path.basename(path)
@@ -158,68 +74,86 @@ class ProjectPolicy:
         )
 
 
-class ProjectProfiler:
-    """Detects lightweight repository traits from files and shared policy."""
+class ProjectFileCollector:
+    """Collects mechanical file facts for LLM decisions."""
 
     def __init__(self, workspace_dir: str, policy: Optional[ProjectPolicy] = None):
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.policy = policy or ProjectPolicy()
 
-    def profile(self) -> RepoProfile:
-        files = self._iter_files()
-        languages = self._detect_languages(files)
-        config_files = [path for path in files if self.policy.is_config(path)]
-        source_files = [path for path in files if self.policy.role(path) == "runtime"]
-        test_files = [path for path in files if self.policy.is_test(path)]
-        entrypoints = [path for path in files if self._is_entrypoint(path)]
-        notes = []
-        if not test_files:
-            notes.append("No test files detected.")
-        if not config_files:
-            notes.append("No project configuration files detected.")
-
-        return RepoProfile(
-            root=self.workspace_dir,
-            languages=languages,
-            config_files=config_files,
-            source_files=source_files,
-            test_files=test_files,
-            entrypoints=entrypoints,
-            notes=notes,
-        )
-
-    def _iter_files(self) -> List[str]:
-        files = []
+    def files(self) -> List[str]:
+        paths = []
         if not os.path.isdir(self.workspace_dir):
-            return files
+            return paths
         for root, dirs, filenames in os.walk(self.workspace_dir):
             dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
             for filename in sorted(filenames):
                 path = os.path.relpath(os.path.join(root, filename), self.workspace_dir)
                 if self.policy.should_track_file(path):
-                    files.append(path)
-        return files
+                    paths.append(path)
+        return paths
 
-    def _detect_languages(self, files: List[str]) -> List[str]:
-        languages = set()
-        file_set = set(files)
-        for language, markers in self.policy.project_language_markers.items():
-            if any(marker in file_set for marker in markers):
-                languages.add(language)
+    def facts(self) -> List[Dict[str, object]]:
+        return [self.file_fact(path) for path in self.files()]
 
-        if any(path.endswith(".py") for path in files):
-            languages.add("python")
-        if any(path.endswith((".js", ".ts", ".tsx")) for path in files):
-            languages.add("node")
-        if any(path.endswith(".go") for path in files):
-            languages.add("go")
-        if any(path.endswith(".rs") for path in files):
-            languages.add("rust")
-
-        return sorted(languages)
-
-    def _is_entrypoint(self, path: str) -> bool:
+    def file_fact(self, path: str) -> Dict[str, object]:
         basename = os.path.basename(path)
-        if path.startswith("examples/demo_"):
-            return True
-        return basename in {"main.py", "app.py", "cli.py", "run.py"}
+        stem, suffix = os.path.splitext(basename)
+        parts = [] if path == "." else path.split(os.sep)
+        return {
+            "path": path,
+            "basename": basename,
+            "stem": stem,
+            "suffix": suffix,
+            "directories": parts[:-1],
+            "depth": max(len(parts) - 1, 0),
+        }
+
+
+class ProjectProfiler:
+    """Profiles repository traits through the LLM decision service."""
+
+    def __init__(
+        self,
+        workspace_dir: str,
+        policy: Optional[ProjectPolicy] = None,
+        decision_service=None,
+    ):
+        self.workspace_dir = os.path.abspath(workspace_dir)
+        self.policy = policy or ProjectPolicy()
+        self.decision_service = decision_service
+
+    def profile(self) -> RepoProfile:
+        files = ProjectFileCollector(self.workspace_dir, policy=self.policy).facts()
+        if not self.decision_service:
+            return RepoProfile(
+                root=self.workspace_dir,
+                languages=[],
+                config_files=[],
+                source_files=[],
+                test_files=[],
+                entrypoints=[],
+                notes=["LLM repository profiling is not configured."],
+            )
+
+        decision = self.decision_service.profile_repository(files)
+        known_paths = {str(file["path"]) for file in files}
+        return RepoProfile(
+            root=self.workspace_dir,
+            languages=self._dedupe(decision.languages),
+            config_files=self._known_paths(decision.config_files, known_paths),
+            source_files=self._known_paths(decision.source_files, known_paths),
+            test_files=self._known_paths(decision.test_files, known_paths),
+            entrypoints=self._known_paths(decision.entrypoints, known_paths),
+            notes=self._dedupe(decision.notes),
+        )
+
+    def _known_paths(self, paths: List[str], known_paths: set) -> List[str]:
+        return [path for path in self._dedupe(paths) if path in known_paths]
+
+    def _dedupe(self, values: List[str]) -> List[str]:
+        result = []
+        for value in values:
+            if value not in result:
+                result.append(value)
+        return result

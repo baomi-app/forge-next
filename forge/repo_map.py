@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Set, Tuple
 
 from forge.llm_decisions import LLMDecisionError
-from forge.project import ProjectPolicy, ProjectProfiler, RepoProfile
+from forge.project import ProjectFileCollector, ProjectPolicy, ProjectProfiler, RepoProfile
 
 
 @dataclass
@@ -99,18 +99,17 @@ class RepoMapper:
     def map(self, directory: str = ".", task_goal: str = "") -> RepoMap:
         target_dir = self._target_dir(directory)
         files = self._collect_files(target_dir)
-        profile = ProjectProfiler(target_dir, policy=self.policy).profile()
+        profile = ProjectProfiler(target_dir, policy=self.policy, decision_service=self.decision_service).profile()
         modules = self._python_modules(files)
         entries: List[RepoFile] = []
         parse_errors: List[str] = []
+        file_facts = []
 
         for path in files:
             full_path = os.path.join(target_dir, path)
-            role = self._role(path)
-            language = self._language(path)
             symbols: List[str] = []
             imports: List[str] = []
-            entrypoint_reason = self._entrypoint_reason(path, "")
+            has_main_guard = False
 
             if path.endswith(".py"):
                 try:
@@ -119,22 +118,32 @@ class RepoMapper:
                     tree = ast.parse(source, filename=path)
                     symbols = self._symbols(tree)
                     imports = self._local_imports(tree, modules)
-                    entrypoint_reason = self._entrypoint_reason(path, source)
+                    has_main_guard = self._has_main_guard(source)
                 except SyntaxError as exc:
                     parse_errors.append(f"{path}: syntax error at line {exc.lineno}: {exc.msg}")
                 except OSError as exc:
                     parse_errors.append(f"{path}: failed to read: {exc}")
 
+            file_facts.append(
+                {
+                    **ProjectFileCollector(target_dir, policy=self.policy).file_fact(path),
+                    "symbols": symbols[:12],
+                    "local_imports": imports[:12],
+                    "has_main_guard": has_main_guard,
+                }
+            )
             entries.append(
                 RepoFile(
                     path=path,
-                    role=role,
-                    language=language,
+                    role="unknown",
+                    language="unknown",
                     symbols=symbols,
                     local_imports=imports,
-                    entrypoint_reason=entrypoint_reason,
+                    entrypoint_reason="",
                 )
             )
+
+        self._annotate_entries(entries, file_facts, parse_errors)
 
         return RepoMap(
             root=os.path.relpath(target_dir, self.workspace_dir),
@@ -157,15 +166,7 @@ class RepoMapper:
         return target_dir
 
     def _collect_files(self, target_dir: str) -> List[str]:
-        files = []
-        for root, dirs, filenames in os.walk(target_dir):
-            dirs[:] = sorted(d for d in dirs if self.policy.should_descend_dir(d))
-            for filename in sorted(filenames):
-                path = os.path.relpath(os.path.join(root, filename), target_dir)
-                if not self.policy.should_track_file(path):
-                    continue
-                files.append(path)
-        return files
+        return ProjectFileCollector(target_dir, policy=self.policy).files()
 
     def _python_modules(self, paths: Iterable[str]) -> Dict[str, str]:
         modules = {}
@@ -226,7 +227,6 @@ class RepoMapper:
                 continue
 
             candidates = list(entry.local_imports)
-            candidates.extend(self._conventional_test_targets(entry.path, runtime_paths))
             for target in candidates:
                 if target == entry.path or target not in runtime_paths:
                     continue
@@ -236,25 +236,6 @@ class RepoMapper:
                     seen.add(pair)
 
         return links
-
-    def _conventional_test_targets(self, test_path: str, runtime_paths: Set[str]) -> List[str]:
-        dirname, filename = os.path.split(test_path)
-        stem = filename[:-3] if filename.endswith(".py") else filename
-        if stem.startswith("test_"):
-            stem = stem[len("test_"):]
-        if stem.endswith("_test"):
-            stem = stem[:-5]
-
-        candidates = [
-            os.path.join(dirname, f"{stem}.py"),
-            f"{stem}.py",
-        ]
-        if dirname.startswith("tests"):
-            rest = dirname.split(os.sep)[1:]
-            if rest:
-                candidates.append(os.path.join(*rest, f"{stem}.py"))
-
-        return [path for path in candidates if path in runtime_paths]
 
     def _suggested_files(self, entries: List[RepoFile], task_goal: str, parse_errors: List[str]) -> List[str]:
         if not task_goal.strip() or not self.decision_service:
@@ -286,23 +267,24 @@ class RepoMapper:
             "entrypoint_reason": entry.entrypoint_reason,
         }
 
-    def _entrypoint_reason(self, path: str, source: str) -> str:
-        basename = os.path.basename(path)
-        if source and 'if __name__ == "__main__"' in source:
-            return "__main__ guard"
-        if source and "if __name__ == '__main__'" in source:
-            return "__main__ guard"
-        if path.startswith("examples/demo_"):
-            return "demo script"
-        if basename in {"main.py", "app.py", "cli.py", "run.py"}:
-            return "conventional Python entry file"
-        return ""
+    def _annotate_entries(self, entries: List[RepoFile], file_facts: List[Dict[str, object]], parse_errors: List[str]):
+        if not self.decision_service:
+            parse_errors.append("LLM repo file annotation is not configured.")
+            return
+        try:
+            decision = self.decision_service.annotate_repo_files(file_facts)
+        except LLMDecisionError as exc:
+            parse_errors.append(f"LLM repo file annotation failed: {exc}")
+            return
 
-    def _role(self, path: str) -> str:
-        return self.policy.role(path)
+        by_path = {annotation.path: annotation for annotation in decision.files}
+        for entry in entries:
+            annotation = by_path.get(entry.path)
+            if not annotation:
+                continue
+            entry.role = annotation.role
+            entry.language = annotation.language
+            entry.entrypoint_reason = annotation.entrypoint_reason
 
-    def _is_test(self, path: str) -> bool:
-        return self.policy.is_test(path)
-
-    def _language(self, path: str) -> str:
-        return self.policy.language(path)
+    def _has_main_guard(self, source: str) -> bool:
+        return 'if __name__ == "__main__"' in source or "if __name__ == '__main__'" in source

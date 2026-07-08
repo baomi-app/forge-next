@@ -3,22 +3,22 @@ import tempfile
 import unittest
 
 from forge.changes import ChangeSet
+from forge.llm_decisions import LLMProjectProfileDecision
 from forge.project import ProjectPolicy, ProjectProfiler
 
 
+class FakeProfileService:
+    def __init__(self, decision):
+        self.decision = decision
+        self.calls = []
+
+    def profile_repository(self, workspace_files):
+        self.calls.append(workspace_files)
+        return self.decision
+
+
 class TestProjectPolicy(unittest.TestCase):
-    def test_classifies_common_project_files(self):
-        policy = ProjectPolicy()
-
-        self.assertEqual(policy.role("app.py"), "runtime")
-        self.assertEqual(policy.role("tests/test_app.py"), "test")
-        self.assertEqual(policy.role("examples/demo_app.py"), "example")
-        self.assertEqual(policy.role("README.md"), "documentation")
-        self.assertEqual(policy.role("package.json"), "config")
-        self.assertEqual(policy.commit_category("app.py"), "runtime code")
-        self.assertEqual(policy.commit_category("pyproject.toml"), "project configuration")
-
-    def test_excludes_checkpoint_and_generated_files(self):
+    def test_policy_only_enforces_workspace_safety_boundaries(self):
         policy = ProjectPolicy()
 
         self.assertFalse(policy.should_track_file("checkpoint.json"))
@@ -36,7 +36,17 @@ class TestProjectPolicy(unittest.TestCase):
             self._write_file(workspace, "README.md", "# Demo\n")
             self._write_file(workspace, "checkpoint.json", "{}\n")
 
-            profile = ProjectProfiler(workspace).profile()
+            service = FakeProfileService(
+                LLMProjectProfileDecision(
+                    languages=["node", "python"],
+                    config_files=["pyproject.toml"],
+                    source_files=["app.py"],
+                    test_files=["tests/test_app.py"],
+                    entrypoints=["app.py"],
+                    notes=["LLM profile."],
+                )
+            )
+            profile = ProjectProfiler(workspace, decision_service=service).profile()
 
         self.assertEqual(profile.languages, ["node", "python"])
         self.assertIn("pyproject.toml", profile.config_files)
@@ -44,6 +54,17 @@ class TestProjectPolicy(unittest.TestCase):
         self.assertIn("tests/test_app.py", profile.test_files)
         self.assertIn("app.py", profile.entrypoints)
         self.assertNotIn("checkpoint.json", profile.source_files)
+        self.assertEqual(service.calls[0][0]["path"], "README.md")
+
+    def test_profiler_reports_missing_llm_without_semantic_fallback(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self._write_file(workspace, "app.py", "VALUE = 1\n")
+
+            profile = ProjectProfiler(workspace).profile()
+
+        self.assertEqual(profile.languages, [])
+        self.assertEqual(profile.source_files, [])
+        self.assertIn("LLM repository profiling is not configured", profile.notes[0])
 
     def test_changeset_persists_policy_rules_compatibly(self):
         with tempfile.TemporaryDirectory() as workspace:
